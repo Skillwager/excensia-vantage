@@ -32,6 +32,8 @@ def main():
     parser.add_argument("csv")
     parser.add_argument("--data-dir", default=None)
     parser.add_argument("--official", default=None, help="clone of the official repository")
+    parser.add_argument("--pass-fail-only", action="store_true",
+                        help="on the public five minutes, print pass or fail and no score")
     args = parser.parse_args()
 
     table = official.read_label_csv(args.csv)
@@ -74,19 +76,22 @@ def main():
         truth = official.label_codes(official.read_label_csv(gt_path))
         result = official.evaluate(truth, labels)
         print("\n2. public five minutes (pipeline check only, 17 possessions)")
-        print("   spellF1 {:.4f}  macroF1 {:.4f}  possessions {} vs {} true  mean {:.1f} s vs {:.1f} s"
-              .format(result["spell_f1_mean"], result["macro_f1"], result["n_pred_spells"],
-                      result["n_gt_spells"], result["mean_spell_duration_s"],
-                      result["gt_mean_spell_duration_s"]))
+        # With --pass-fail-only the scores are not shown: a file that is still being worked on
+        # is checked for what is broken, and its score is left unread until it is final.
+        report = (lambda *values: None) if args.pass_fail_only else print
+        report("   spellF1 {:.4f}  macroF1 {:.4f}  possessions {} vs {} true  mean {:.1f} s vs {:.1f} s"
+               .format(result["spell_f1_mean"], result["macro_f1"], result["n_pred_spells"],
+                       result["n_gt_spells"], result["mean_spell_duration_s"],
+                       result["gt_mean_spell_duration_s"]))
         for name in ("H", "A", "D"):
             row = result["per_class"][name]
-            print("   {}  precision {:.3f}  recall {:.3f}  f1 {:.3f}".format(
+            report("   {}  precision {:.3f}  recall {:.3f}  f1 {:.3f}".format(
                 name, row["precision"], row["recall"], row["f1"]))
         for tolerance in (12, 25):
             row = result["transitions"][tolerance]
-            print("   changes within {:>2} frames: precision {:.2f} recall {:.2f}  median lag {}".format(
+            report("   changes within {:>2} frames: precision {:.2f} recall {:.2f}  median lag {}".format(
                 tolerance, row["precision"], row["recall"], row["median_latency"]))
-        print("   alive/dead F1 {:.3f}  team accuracy where both alive {:.3f}".format(
+        report("   alive/dead F1 {:.3f}  team accuracy where both alive {:.3f}".format(
             result["alive_dead_f1"], result["team_acc_both_alive"]))
 
         # The check is pass or fail. These are questions about whether the pipeline means what
@@ -106,8 +111,9 @@ def main():
                                                                      dead & ~seen)):
                 if mask.any():
                     found = float(np.mean(mine_dead[mask]))
-                    checks.append(("dead ball is found {} (at least half of those frames; "
-                                   "found {:.2f})".format(name, found), found >= 0.5))
+                    detail = "" if args.pass_fail_only else "; found {:.2f}".format(found)
+                    checks.append(("dead ball is found {} (at least half of those frames{})"
+                                   .format(name, detail), found >= 0.5))
         print("\n   pass or fail:")
         for text, passed in checks:
             print("   {}  {}".format("PASS" if passed else "FAIL", text))

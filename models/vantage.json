@@ -1,13 +1,13 @@
 {
   "decode": {
-    "boundary_weight": 4.0,
+    "boundary_weight": 8.0,
     "cost_floor": 0.25,
     "cost_from_dead": 14.0,
     "cost_team": 0.5,
     "cost_to_dead": 14.0,
     "floor": 0.0001,
     "min_dead": 0.5,
-    "min_possession": 0.2
+    "min_possession": 0.4
   },
   "features": [
     "a_cx",
@@ -192,6 +192,10 @@
     "seen_m12",
     "seen_m125",
     "seen_m37",
+    "sp_last_team",
+    "sp_next_team",
+    "sp_since",
+    "sp_until",
     "still_run",
     "still_since",
     "still_until",
@@ -264,14 +268,14 @@
   ],
   "models": {
     "boundary": {
-      "bytes": 8576658,
+      "bytes": 8579679,
       "file": "vantage_boundary.txt",
-      "sha256": "9a3668844019e97e25558fceb0001403134334ea05f235dc4a522e369919f2fa"
+      "sha256": "7aeccb1963f7eb8b8b2ce4e7e99ec6f42ddbc5d3c1a81f291848ddeb7da85b3d"
     },
     "state": {
-      "bytes": 8591184,
+      "bytes": 8602966,
       "file": "vantage_state.txt",
-      "sha256": "9a625dab15233bb6b3232d57bd505747594ae9ac8f5d8291a6edc9ddf079de35"
+      "sha256": "387bcf99d8ef58682c83c6ccd0d45bc03c9c85ea3faf62a39058b5822a137bfa"
     }
   },
   "package": "0.1.0",
@@ -279,15 +283,15 @@
     "boundary_rounds": 300,
     "boundary_width": 6,
     "class_counts": [
-      411128,
-      411322,
-      610114
+      411198,
+      411282,
+      610084
     ],
     "control_seconds": {
       "dfl": 0.0,
       "metrica": 0.0
     },
-    "data_tag": "v8",
+    "data_tag": "v10",
     "lightgbm": "4.7.0",
     "matches": [
       "J03WMX",
