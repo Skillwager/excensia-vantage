@@ -1,0 +1,17 @@
+# Match data is never committed: the competition assets are not redistributable,
+# and the open training matches are fetched by scripts/fetch_external.py.
+data/
+runs/
+external/
+*.mp4
+*.mov
+*.MTS
+
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+viewer/node_modules/
+viewer/shots/

@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "excensia-vantage"
+version = "0.1.0"
+description = "Frame-level ball possession from automatic football tracking"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+dependencies = ["numpy", "lightgbm"]
+
+[tool.setuptools.packages.find]
+include = ["vantage*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
