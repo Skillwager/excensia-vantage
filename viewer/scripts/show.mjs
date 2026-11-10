@@ -1,0 +1,134 @@
+/**
+ * Shows a page made with `python -m vantage export --page` as a window of its own: no tabs, no
+ * address bar, maximised, and playing from the moment asked for.
+ *
+ *   node scripts/show.mjs ../runs/match/final/match.html --at=7:20
+ *
+ * The window is a separate browser with its own empty profile (kept under runs/, which is not
+ * in the repository), so no extension of your everyday browser can read the page. The script
+ * then asks that window, in numbers only, whether the page is up and the clock is running, and
+ * leaves it open. PW_CHROME names the browser; Chrome and Edge are looked for otherwise.
+ */
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { chromium } from "playwright-core";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const positional = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const args = Object.fromEntries(
+  process.argv
+    .slice(2)
+    .filter((a) => a.startsWith("--"))
+    .map((a) => [a.slice(2).split("=")[0], a.includes("=") ? a.split("=").slice(1).join("=") : true]),
+);
+const file = positional[0];
+if (!args.close && (!file || !existsSync(file))) {
+  console.error("Give the path of a page made with export --page, or --close to close the window.");
+  process.exit(2);
+}
+
+const browsers = [
+  process.env.PW_CHROME,
+  "C:/Program Files/Google/Chrome/Application/chrome.exe",
+  "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
+  "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+  "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/usr/bin/google-chrome",
+  "/usr/bin/chromium",
+];
+const executable = browsers.find((path) => path && existsSync(path));
+if (!executable) {
+  console.error("No Chrome or Edge found. Set PW_CHROME to a browser.");
+  process.exit(2);
+}
+
+const profile = resolve(root, "..", "runs", "show-profile");
+mkdirSync(profile, { recursive: true });
+const portFile = join(profile, "DevToolsActivePort");
+if (existsSync(portFile)) {
+  // a window from an earlier call is still open: close it, so there is only ever one
+  try {
+    const earlier = await chromium.connectOverCDP(`http://127.0.0.1:${Number(readFileSync(portFile, "utf8").split("\n")[0])}`, { timeout: 3000 });
+    const session = await earlier.newBrowserCDPSession();
+    await session.send("Browser.close").catch(() => {});
+    await new Promise((done) => setTimeout(done, 1500));
+  } catch {
+    // nothing was running
+  }
+  rmSync(portFile, { force: true });
+}
+if (args.close) {
+  console.log("closed");
+  process.exit(0);
+}
+
+const at = typeof args.at === "string" ? args.at : "0:00";
+const address = pathToFileURL(resolve(file)).href + `#t=${at}&play=1`;
+const child = spawn(
+  executable,
+  [`--user-data-dir=${profile}`, `--app=${address}`, "--start-maximized", "--no-first-run", "--no-default-browser-check", "--disable-sync", "--remote-debugging-port=0"],
+  { detached: true, stdio: "ignore" },
+);
+child.unref();
+
+// the browser writes the port it chose into its profile
+let port = null;
+for (let i = 0; i < 100 && port === null; i++) {
+  await new Promise((done) => setTimeout(done, 200));
+  if (existsSync(portFile)) port = Number(readFileSync(portFile, "utf8").split("\n")[0]);
+}
+if (!port) {
+  console.log("The window was started, but it did not answer. Look for it on the screen.");
+  process.exit(1);
+}
+
+let failed = false;
+const say = (ok, text) => {
+  if (!ok) failed = true;
+  console.log(`${ok ? "ok  " : "FAIL"}  ${text}`);
+};
+const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+try {
+  const context = browser.contexts()[0];
+  let page = context.pages().find((p) => p.url().startsWith("file:"));
+  for (let i = 0; i < 50 && !page; i++) {
+    await new Promise((done) => setTimeout(done, 200));
+    page = context.pages().find((p) => p.url().startsWith("file:"));
+  }
+  if (!page) throw new Error("the page did not open");
+  await page.waitForSelector(".poss", { timeout: 120_000 });
+  await page.waitForFunction(() => !document.querySelector(".notice--busy"), null, { timeout: 120_000 });
+  const read = () =>
+    page.evaluate(() => ({
+      clock: document.querySelector(".tp__now")?.textContent ?? "",
+      total: document.querySelector(".tp__total")?.textContent ?? "",
+      playing: document.querySelector(".tp__play")?.getAttribute("aria-label") === "Pause",
+      alerts: document.querySelectorAll(".notice[role=alert]").length,
+      video: document.querySelectorAll("video").length,
+      visible: document.visibilityState === "visible",
+      focused: document.hasFocus(),
+      width: window.innerWidth,
+      height: window.innerHeight,
+      screenWidth: window.screen.availWidth,
+      screenHeight: window.screen.availHeight,
+    }));
+  const seconds = (clock) => {
+    const parts = String(clock).trim().split(":").map(Number);
+    return parts.length === 2 ? parts[0] * 60 + parts[1] : NaN;
+  };
+  await page.waitForTimeout(1500);
+  const first = await read();
+  await page.waitForTimeout(4000);
+  const second = await read();
+  say(second.alerts === 0, `the page is up, ${second.total} long, with ${second.alerts} error messages`);
+  say(second.video === 0, `no video is in the page (${second.video})`);
+  say(second.playing && seconds(second.clock) - seconds(first.clock) >= 3, `it is playing by itself: the clock went from ${first.clock} to ${second.clock} in four seconds`);
+  say(second.visible, `the window is showing (${second.width}x${second.height} of a ${second.screenWidth}x${second.screenHeight} screen)${second.focused ? ", in front" : ", not in front yet"}`);
+} catch (error) {
+  say(false, `the window did not answer as expected: ${error.message}`);
+}
+// leave the window open: only this script's connection ends
+process.exit(failed ? 1 : 0);

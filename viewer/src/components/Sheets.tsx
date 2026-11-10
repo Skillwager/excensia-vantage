@@ -130,17 +130,23 @@ export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () =>
             <FolderIcon size={16} />
             Open a run file
           </button>
-          <button type="button" className="btn btn--quiet" onClick={pickVideo}>
-            <FilmIcon size={16} />
-            Add the match video
-          </button>
+          {run.videoWithheld ? null : (
+            <button type="button" className="btn btn--quiet" onClick={pickVideo}>
+              <FilmIcon size={16} />
+              Add the match video
+            </button>
+          )}
           {run.source !== "demo" ? (
             <button type="button" className="btn btn--ghost" onClick={backToDemo}>
               Back to the simulated match
             </button>
           ) : null}
         </div>
-        <p className="sheet__note">You can also drop a run file (.json) or a video anywhere on the page. Files are read in this browser only; nothing is uploaded.</p>
+        {run.videoWithheld ? (
+          <p className="sheet__note">{run.videoWithheld}</p>
+        ) : (
+          <p className="sheet__note">You can also drop a run file (.json) or a video anywhere on the page. Files are read in this browser only; nothing is uploaded.</p>
+        )}
         {run.source === "demo" ? (
           <p className="sheet__note">
             Want to see the format?{" "}

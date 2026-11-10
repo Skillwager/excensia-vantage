@@ -27,11 +27,13 @@ const TAB_IDS: readonly TabId[] = ["match", "possession", "shape", "insights"];
 
 /**
  * A link can open the viewer at a moment and a tab: #t=72:14 (or seconds, #t=4334) and #tab=shape.
+ * With &play it also starts the match by itself as soon as it is up.
  * Nothing is written back to the address.
  */
-function readLink(): { seconds: number | null; tab: TabId | null } {
+function readLink(): { seconds: number | null; tab: TabId | null; play: boolean } {
   let seconds: number | null = null;
   let tab: TabId | null = null;
+  let play = false;
   try {
     const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     const t = params.get("t");
@@ -42,10 +44,11 @@ function readLink(): { seconds: number | null; tab: TabId | null } {
     }
     const wanted = params.get("tab");
     if (wanted && (TAB_IDS as readonly string[]).includes(wanted)) tab = wanted as TabId;
+    play = params.has("play") && params.get("play") !== "0";
   } catch {
     // an address this page cannot read is no reason to stop
   }
-  return { seconds, tab };
+  return { seconds, tab, play };
 }
 
 interface HostDownloads {
@@ -107,6 +110,7 @@ export function App() {
   const [playback, setPlayback] = useState<Playback | null>(null);
   const [video, setVideo] = useState<{ url: string; name: string } | null>(null);
   const link = useMemo(readLink, []);
+  const startWhenReady = useRef(link.play);
   const [tab, setTab] = useState<TabId>(link.tab ?? "possession");
   const [settings, setSettingsState] = useState<ViewSettings>({ labels: true, follow: true, outlines: true });
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -120,10 +124,21 @@ export function App() {
   const demo = useRef<Loaded | null>(null);
   const loadedRef = useRef(loaded);
   loadedRef.current = loaded;
+  const videoRef = useRef(video);
+  videoRef.current = video;
+  // why the match on screen may have no video beside it, or null; set the moment a match is shown
+  const withheld = useRef<string | null>(null);
 
   const show = useCallback(
     (next: Loaded, frame: number) => {
       timeline.reset(next.run.frames);
+      withheld.current = next.run.videoWithheld;
+      if (next.run.videoWithheld) {
+        setVideo((current) => {
+          if (current) URL.revokeObjectURL(current.url);
+          return null;
+        });
+      }
       setLoaded(next);
       setPlayback((current) => {
         if (current) {
@@ -153,32 +168,6 @@ export function App() {
           try {
             const run = parseRunFile(carried.textContent, carried.getAttribute("data-name") ?? "match.run.json");
             show({ run, scene: null }, (link.seconds ?? 0) * run.fps);
-            // It can also say where the match video is on this computer (export --video), and
-            // then the footage opens with the analysis. The video is only shown once the browser
-            // has found the file and can play it; until then, and if it never can, the match
-            // stays drawn from its tracking.
-            const tape = carried.getAttribute("data-video");
-            if (tape) {
-              const name = carried.getAttribute("data-video-name") ?? "Match video";
-              const probe = document.createElement("video");
-              probe.preload = "metadata";
-              probe.muted = true;
-              const done = () => {
-                probe.onloadedmetadata = null;
-                probe.onerror = null;
-                probe.removeAttribute("src");
-                probe.load();
-              };
-              probe.onloadedmetadata = () => {
-                done();
-                if (!cancelled) setVideo({ url: tape, name });
-              };
-              probe.onerror = () => {
-                done();
-                if (!cancelled) setNotice(`${name} could not be opened from this page, so the match is drawn from its tracking. Add the video yourself to watch it here.`);
-              };
-              probe.src = tape;
-            }
             return;
           } catch (error) {
             setNotice(error instanceof RunFileError ? `The match built into this page can't be opened. ${error.message}` : "The match built into this page can't be opened.");
@@ -192,6 +181,13 @@ export function App() {
       cancelAnimationFrame(raf);
     };
   }, [show, link]);
+
+  // &play in the address: start once, as soon as the match is up
+  useEffect(() => {
+    if (!startWhenReady.current || !playback || !loaded) return;
+    startWhenReady.current = false;
+    playback.play();
+  }, [playback, loaded]);
 
   useEffect(() => {
     const image = new Image();
@@ -220,8 +216,9 @@ export function App() {
       try {
         const text = await file.text();
         const run = parseRunFile(text, file.name);
+        const closed = run.videoWithheld && videoRef.current ? videoRef.current.name : null;
         show({ run, scene: null }, 0);
-        setNotice(null);
+        setNotice(closed ? `${closed} was closed. ${run.videoWithheld}` : null);
         setTab("possession");
       } catch (error) {
         setNotice(error instanceof RunFileError ? `${file.name} can't be opened. ${error.message}` : `${file.name} can't be opened. It could not be read.`);
@@ -234,6 +231,10 @@ export function App() {
 
   const openVideo = useCallback(
     (file: File) => {
+      if (withheld.current) {
+        setNotice(`${file.name} was not opened. ${withheld.current}`);
+        return;
+      }
       const url = URL.createObjectURL(file);
       const probe = document.createElement("video");
       probe.preload = "metadata";

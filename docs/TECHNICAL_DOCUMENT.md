@@ -61,7 +61,7 @@ output on any machine, which the reproduction rule needs.
 | Smart Tagging: phases | A light vote for the team, added before decoding, from the four attacking phases only (build up, progression, creating chances, attacking transition). One tag is worth a fixed total of 3 in log-odds however long it is; that weight is a reasoned constant, because no other match has these tags to tune it on. A label-free check (`scripts/tag_check.py`) decided what votes. The phases are tagged where the ball is tracked (it is missing on 7% of their frames against 41% overall), so they add little where help is needed; on live frames they agree with tracking-only labels 92 to 98% of the time for build up and progression. The defending-phase tags repeat the attacking ones interval for interval and are not counted twice. Ball in final third, ball in the box, players in the box and long ball run through stoppages and through the other team's possession and are not used. |
 | Published constants | The graded frame ranges, the second-half kick-off frame and the fact that the graded frames before it are dead ball (DATA.md, FAQ.md). Ungraded frames are written `X`. |
 | Public 5-minute ground truth | Used to read the definition and to check the pipeline, as CHALLENGE.md and EVALUATION.md ask. No number was fitted to it, and no version was chosen by its score. The full account is below the table. |
-| Homography, tactical video | Not used by the method. The viewer in this repository can play the tactical video beside the finished labels on the user's own machine; nothing is read from it. |
+| Homography, tactical video | Not used. The viewer in this repository shows this match drawn from its tracking and opens no video beside it (see "How the provided match was handled"). |
 | Broadcast video, tracking and homography | Not used. Aligning its timeline to the tactical one was considered as a way to recover the ball while the tactical tracker has lost it, and left out for lack of a way to validate it on other matches. |
 
 **What the public five minutes were used for, in full.** Three things were learned from them,
@@ -75,7 +75,11 @@ and each changed the method.
    and home and away the right way round, but only a quarter of the dead-ball frames marked dead.
    Totals over the window showed why: two of its four stoppages have a ball on every frame, and
    the simulator had assumed a stoppage almost always hides the ball. The assumption was removed:
-   the chance that a stoppage keeps its ball is now drawn from 0 to 0.7.
+   the chance that a stoppage keeps its ball is now drawn from 0 to 0.7. The same fact shows
+   without the ground truth. The five seconds before a tagged restart are stoppage time by the
+   tag alone, and over the 57 tagged restarts that have those five seconds on record the ball
+   is tracked on a third of the frames, and on every one of them at 12 restarts
+   (`scripts/set_piece_profile.py`).
 3. *What a ball does in such a stoppage* was then taken from the whole recording without labels
    (`scripts/slow_report.py`): while the players are close to standing still, the tracked ball is
    at rest on only a fifth of the frames. The simulator was changed to move it, and compared with
@@ -88,15 +92,32 @@ read on four finished files, and all four readings are in section 5, including o
 against the final file. Seventeen possessions cannot rank two versions, and no version
 was chosen that way; versions were compared on other matches only.
 
+The organisers' clarification of 3 November 2026 allows automatic checks on the provided data
+and inspecting it to understand what counts as possession, and does not allow training, fitting
+or calibrating on the ground truth. We read the three uses above as the first kind: each changed
+what the method takes a label to mean, none set a number from the ground truth, and every number
+that followed came from other matches, from wide ranges or from label-free totals. They are set
+out in full so that the organisers can judge that for themselves.
+
 **How the provided match was handled.** It is read at inference, and it was read for label-free
 totals: `scripts/match_check.py` compares the loader against the figures in DATA.md (it
 reproduces them exactly: the ball on 94,214 of 158,857 graded frames, 20.5 tracked players on
 average), and `scripts/domain_report.py` prints percentiles and shares for a whole half, never a
 frame. Those totals shaped the simulator's ranges. No frame of the match was labelled, corrected
 or inspected by a person for this method, and no constant refers to a frame or a moment of the
-match. The method never compares its output with the video. The viewer shows the finished labels
-beside the tactical video on the team's own machine, for the team to watch, as the rules allow;
-no label, correction, constant or choice between versions came from watching.
+match. The method never compares its output with the video.
+
+One thing has to be reported here. On 10 November the assistant added to the viewer a page that
+plays the tactical video beside the finished labels, ran a script on it that compares the video
+player's clock with the viewer's clock (durations and clock readings, nothing of the output set
+against the picture), and opened the page on a team member's computer. That was a mistake: the
+organisers' clarification of 3 November does not allow output to be checked against the video,
+and the assistant had not read it into its work. The page was closed and the option removed
+within hours. The run file of this match now tells the viewer to open no video beside it. No
+label, correction, constant or choice between versions came from that page: those choices are
+made on other matches (section 5) by the assistant, which never saw the page, and nothing seen
+on it was passed on by anyone. What the team does look at is the finished file in the viewer,
+with the match drawn from its tracking, and nothing is changed because of that either.
 
 **AI assistance.** The code and this document were written with a hosted AI coding assistant
 (Claude). The tracking rows, tags, homography and video of the match were kept out of its
@@ -106,8 +127,7 @@ window or all the tags of one kind, never frames. The scripts are in `scripts/` 
 same totals for anyone who runs them. The finest things it saw are the share of each of the four
 public stoppages that has a tracked ball, and how far the two kick-off tags start before the
 published kick-off frames (3.52 and 3.28 seconds). Of the video it saw the length and the frame
-size, from a local check that the viewer plays it in step with the labels and that takes no
-picture (`viewer/scripts/tape-check.mjs`). One exception, before the team had read that
+size, from the clock comparison reported above. One exception, before the team had read that
 rule: a file search on a cloud drive returned to the assistant the opening lines, about a
 thousand characters each, of the two tracking metadata files, and the bundle's README. They
 describe the file layout, and the method takes nothing from them that DATA.md does not publish.

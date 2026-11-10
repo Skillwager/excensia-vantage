@@ -21,6 +21,12 @@ GRADED = {1: (11185, 90651), 2: (110808, 190197)}
 # The second half is graded from 110808 but kicks off at 113742; the frames in between are graded
 # and all dead ball (FAQ.md, "Which frames are actually graded?").
 KICKOFF = {1: 11185, 2: 113742}
+# The organisers' clarification of the rules (3 November 2026) does not allow output to be
+# checked against the video. A run file of this match carries this sentence, and the viewer
+# then opens no video beside its labels.
+VIDEO_WITHHELD = ("This is the test match of More than a Hack 2027. Its rules do not allow "
+                  "output to be checked against the video, so no video is played beside "
+                  "these labels.")
 
 
 def tactical_paths(data_dir):

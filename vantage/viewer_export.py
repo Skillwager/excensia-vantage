@@ -1,7 +1,7 @@
 """Write a run file for the viewer (viewer/, schema `excensia.vantage.run/1`).
 
-A run file is what the viewer opens next to a match video: the labels, how sure the model was of
-each possession and on what kind of evidence, and the tracking it worked from, thinned out.
+A run file is what the viewer opens: the labels, how sure the model was of each possession and
+on what kind of evidence, and the tracking it worked from, thinned out.
 
 A run file of the competition match holds frame-level tracking. It is derived match data: keep
 it on the machine that has the match, never commit it and never publish it. `.gitignore` excludes
@@ -63,7 +63,8 @@ def _point(xy):
     return [round(float(xy[0]), 2), round(float(xy[1]), 2)]
 
 
-def build(title, home, away, labels, halves, states, evidence=None, every=5, period_names=None):
+def build(title, home, away, labels, halves, states, evidence=None, every=5, period_names=None,
+          video_withheld=None):
     """The run file as a dict.
 
     labels    (N,) label codes for every video frame
@@ -71,6 +72,8 @@ def build(title, home, away, labels, halves, states, evidence=None, every=5, per
     states    per half, the (T, 3) probabilities of home, away and dead ball
     evidence  per half, None or (rows, (n, 3) shares) from `evidence_shares`
     every     keep one tracking sample in this many frames
+    video_withheld  a sentence saying why this match's video may not be played beside these
+              labels; the viewer then opens no video for it
     """
     n_frames = len(labels)
     period_names = period_names or ["1st half", "2nd half", "Extra time 1", "Extra time 2"]
@@ -115,8 +118,8 @@ def build(title, home, away, labels, halves, states, evidence=None, every=5, per
         previous = code
 
     # Tracking: one sample in `every`, in the pitch's own orientation for the whole match. The
-    # engine turns a half round so that home attacks +x; a viewer beside the video wants the
-    # camera's left and right, so a turned half is turned back.
+    # engine turns a half round so that home attacks +x; the viewer keeps the pitch's own left
+    # and right for the whole match, so a turned half is turned back.
     count = (n_frames + every - 1) // every
     home_slots = max(half.home_xy.shape[1] for half in halves)
     away_slots = max(half.away_xy.shape[1] for half in halves)
@@ -153,7 +156,8 @@ def build(title, home, away, labels, halves, states, evidence=None, every=5, per
         "spells": spells,
         "transitions": transitions,
         "tracking": {"every": int(every), "samples": samples},
-        "video": {"offset_frames": 0},
+        "video": ({"offset_frames": 0, "withheld": video_withheld} if video_withheld
+                  else {"offset_frames": 0}),
     }
 
 
@@ -163,14 +167,12 @@ def write(path, run):
     return path
 
 
-def write_page(path, run, template, name="match.run.json", video=None):
+def write_page(path, run, template, name="match.run.json"):
     """Write the viewer with this run built in: one file that opens straight on the match.
 
     `template` is the built viewer (viewer/dist/index.html). The run goes into the page as a
-    data block the viewer reads when it starts. `video` is the path of the match video on this
-    computer; the page then plays it beside the analysis. The video is not copied, only pointed
-    at, so the page works where that file is. The same warning applies as for a run file: a page
-    made from the competition match holds its tracking and stays on this machine.
+    data block the viewer reads when it starts. The same warning applies as for a run file: a
+    page made from the competition match holds its tracking and stays on this machine.
     """
     with open(template, encoding="utf-8") as handle:
         html = handle.read()
@@ -179,15 +181,8 @@ def write_page(path, run, template, name="match.run.json", video=None):
         raise ValueError("the viewer page at {} is not the built viewer".format(template))
     # "<" cannot end the block early or open a comment once it is written as an escape
     data = json.dumps(run, separators=(",", ":")).replace("<", "\\u003c")
-    tape = ""
-    if video:
-        from pathlib import Path
-
-        located = Path(video).resolve()
-        tape = ' data-video="{}" data-video-name="{}"'.format(
-            located.as_uri().replace('"', "%22"), located.name.replace('"', ""))
-    block = '<script type="application/json" id="vantage-run" data-name="{}"{}>{}</script>\n  '.format(
-        name.replace('"', ""), tape, data)
+    block = '<script type="application/json" id="vantage-run" data-name="{}">{}</script>\n  '.format(
+        name.replace('"', ""), data)
     with open(path, "w", newline="\n", encoding="utf-8") as handle:
         handle.write(html.replace(marker, block + marker))
     return path

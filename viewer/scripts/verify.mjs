@@ -373,6 +373,34 @@ try {
   await page.waitForFunction(() => document.querySelector(".tlp .tp__total")?.textContent === "03:00");
   check("opening the run file then keeps the video", (await page.locator("video.match__media").count()) === 1 && (await page.locator(".notice").count()) === 0);
 
+  // a match whose video is withheld: the video on screen is closed, and none can be added
+  const why = "The rules of this match do not allow its video beside the labels.";
+  const withheldPath = join(work, "video-withheld.json");
+  writeFileSync(withheldPath, JSON.stringify({ ...plain, video: { offset_frames: 0, withheld: why } }));
+  await runInput.setInputFiles(withheldPath);
+  await page.waitForFunction(() => document.querySelector(".source__text")?.textContent?.includes("video-withheld.json"), null, { timeout: 30_000 });
+  await page.waitForTimeout(200);
+  const closedNotice = await page.locator('.notice[role="alert"]').innerText().catch(() => "");
+  check(
+    "a run whose video is withheld closes the video that was open, and says why",
+    (await page.locator("video.match__media").count()) === 0 && closedNotice.includes("test-pattern.webm was closed") && closedNotice.includes(why),
+    closedNotice.replace(/\s+/g, " "),
+  );
+  await videoInput.setInputFiles(videoPath);
+  await page.waitForTimeout(600);
+  const refusedNotice = await page.locator('.notice[role="alert"]').innerText().catch(() => "");
+  check(
+    "and refuses a video for that match",
+    (await page.locator("video.match__media").count()) === 0 && refusedNotice.includes("test-pattern.webm was not opened") && refusedNotice.includes(why),
+    refusedNotice.replace(/\s+/g, " "),
+  );
+  await snap(page, "video-withheld");
+  await page.getByRole("button", { name: "Files and settings" }).click();
+  check("and offers no way to add one", (await page.getByRole("button", { name: "Add the match video" }).count()) === 0 && (await page.getByText(why).count()) >= 1);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(150);
+  await page.getByRole("button", { name: "Dismiss" }).click();
+
   // dropping a file on the page
   await page.getByRole("button", { name: "Files and settings" }).click();
   await page.getByRole("button", { name: "Back to the simulated match" }).click();

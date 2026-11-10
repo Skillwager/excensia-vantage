@@ -146,14 +146,15 @@ def export(args):
                 state_model, table, names, np.minimum(codes, 2).astype(np.int64),
                 every=args.every))
     run_file = viewer_export.build("{} v {}".format(home_name, away_name), home_name, away_name,
-                                   labels, halves, states, evidence, every=args.every)
+                                   labels, halves, states, evidence, every=args.every,
+                                   video_withheld=competition.VIDEO_WITHHELD)
     folder = os.path.dirname(os.path.abspath(args.out))
     os.makedirs(folder, exist_ok=True)
     viewer_export.write(args.out, run_file)
     print("wrote {}  ({:.1f} MB)".format(args.out, os.path.getsize(args.out) / 1e6))
     if args.page:
         viewer_export.write_page(args.page, run_file, args.viewer,
-                                 name=os.path.basename(args.out), video=args.video)
+                                 name=os.path.basename(args.out))
         print("wrote {}  (the viewer with this match built in; open it in a browser)".format(
             args.page))
     for key, value in viewer_export.summary(run_file).items():
@@ -184,9 +185,6 @@ def main(argv=None):
                           help="also write the viewer with this match built in, as one .html file")
     exporter.add_argument("--viewer", default=DEFAULT_VIEWER,
                           help="the built viewer to use for --page")
-    exporter.add_argument("--video", default=None,
-                          help="with --page: the match video on this computer, played beside "
-                               "the analysis (the tactical video, whose frames the labels count)")
     args = parser.parse_args(argv)
     return {"run": run, "export": export}[args.command](args)
 

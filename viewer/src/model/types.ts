@@ -67,7 +67,11 @@ export interface RunFile {
   /** Sample i is frame i * every. */
   tracking?: { every: number; samples: RunFileSample[] };
   /** Run frame f is video frame f + offset_frames. */
-  video?: { offset_frames: number };
+  /**
+   * `withheld` is a sentence saying why this match's video may not be played beside these
+   * labels. A viewer that reads it opens no video for the match.
+   */
+  video?: { offset_frames: number; withheld?: string };
 }
 
 /* ───────────────────────── the viewer's own form ───────────────────────── */
@@ -152,6 +156,8 @@ export interface Run {
   changeFrame: Int32Array;
   tracking: Tracking | null;
   videoOffset: number;
+  /** Why this match's video may not be played beside these labels, or null when it may. */
+  videoWithheld: string | null;
   /** True when the file itself carried spells (confidence, evidence). */
   hasSpellDetail: boolean;
   /** True when the file itself carried transitions (reasons). */

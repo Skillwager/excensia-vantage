@@ -166,7 +166,19 @@ describe("loading a run file", () => {
     expect(run.periods).toEqual([]);
     expect(run.tracking).toBeNull();
     expect(run.videoOffset).toBe(0);
+    expect(run.videoWithheld).toBeNull();
     expect(Array.from(run.runStart)).toEqual([0, 3]); // neighbouring runs of one label are joined
+  });
+
+  it("reads that a match's video is withheld, and writes it back", () => {
+    const why = "The rules of this match do not allow its video beside the labels.";
+    const file = { schema: "excensia.vantage.run/1", match: { home: { name: "Reds" }, away: { name: "Blues" }, fps: 25, frames: 4 }, labels: [["H", 4]], video: { offset_frames: 0, withheld: `  ${why} ` } };
+    const run = loadRunFile(file);
+    expect(run.videoWithheld).toBe(why);
+    expect(toRunFile(run).video).toEqual({ offset_frames: 0, withheld: why });
+    expect(toRunFile(loadRunFile({ ...file, video: { offset_frames: 0 } })).video).toEqual({ offset_frames: 0 });
+    expect(() => loadRunFile({ ...file, video: { withheld: 7 } })).toThrow(/video\.withheld/);
+    expect(() => loadRunFile({ ...file, video: { withheld: "  " } })).toThrow(/video\.withheld/);
   });
 
   it("ignores fields it does not know", () => {

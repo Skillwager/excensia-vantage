@@ -78,18 +78,24 @@ def main():
             if dead is not None:
                 row += "     {:>6.2f}".format(np.mean(called))
             print(row + ("   <- tag starts" if second == 0 else ""))
-        if dead is not None:
-            # The restart is tagging.RESTART_LEAD into the clip. The five seconds before it
-            # should be a stoppage whatever the tracker saw of the ball.
-            lead = int(round(tagging.RESTART_LEAD * FPS))
-            before = [dead[item["start"] + lead - 5 * FPS:item["start"] + lead].mean()
-                      for item in items
-                      if item["start"] + lead - 5 * FPS >= 0
-                      and covered[item["start"] + lead - 5 * FPS:item["start"] + lead].all()]
-            if before:
-                print("  in the five seconds before the restart the file calls dead ball on "
-                      "{:.2f} of frames; at least half of them at {} of {} tags".format(
-                          np.mean(before), int(np.sum(np.array(before) >= 0.5)), len(before)))
+        # The restart is tagging.RESTART_LEAD into the clip. The five seconds before it are a
+        # stoppage whatever the tracker saw of the ball, so they show without any label how
+        # often a stoppage keeps its ball in view.
+        lead = int(round(tagging.RESTART_LEAD * FPS))
+        spans = [slice(item["start"] + lead - 5 * FPS, item["start"] + lead) for item in items
+                 if item["start"] + lead - 5 * FPS >= 0
+                 and covered[item["start"] + lead - 5 * FPS:item["start"] + lead].all()]
+        if spans:
+            tracked = np.array([seen[span].mean() for span in spans])
+            print("  in the five seconds before the restart the ball is tracked on {:.2f} of frames; "
+                  "on at least half of them at {} of {} tags, on every one at {}".format(
+                      tracked.mean(), int(np.sum(tracked >= 0.5)), len(spans),
+                      int(np.sum(tracked >= 1.0))))
+        if dead is not None and spans:
+            before = np.array([dead[span].mean() for span in spans])
+            print("  in the five seconds before the restart the file calls dead ball on "
+                  "{:.2f} of frames; at least half of them at {} of {} tags".format(
+                      before.mean(), int(np.sum(before >= 0.5)), len(spans)))
 
 
 if __name__ == "__main__":

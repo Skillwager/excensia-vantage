@@ -313,6 +313,7 @@ export interface RunParts {
   transitions?: RunFileTransition[];
   tracking: Tracking | null;
   videoOffset: number;
+  videoWithheld: string | null;
   generator: { name: string; version: string } | null;
 }
 
@@ -344,6 +345,7 @@ export function buildRun(parts: RunParts, source: RunSource, fileName: string | 
     changeFrame: Int32Array.from(changes, (c) => c.frame),
     tracking,
     videoOffset: parts.videoOffset,
+    videoWithheld: parts.videoWithheld,
     hasSpellDetail: (parts.spells?.length ?? 0) > 0,
     hasChangeDetail: (parts.transitions?.length ?? 0) > 0,
   };
@@ -377,6 +379,7 @@ export function checkRunFile(json: unknown): Omit<RunParts, "tracking"> & { rawT
   const transitions = checkTransitions(json.transitions, match.frames, index);
 
   let videoOffset = 0;
+  let videoWithheld: string | null = null;
   if (json.video !== undefined && json.video !== null) {
     const v = json.video;
     if (!isObject(v)) fail('"video" should be an object such as {"offset_frames": 0}.');
@@ -384,9 +387,13 @@ export function checkRunFile(json: unknown): Omit<RunParts, "tracking"> & { rawT
       if (!isWhole(v.offset_frames)) fail(`video.offset_frames should be a whole number of frames. Got ${show(v.offset_frames)}.`);
       videoOffset = v.offset_frames;
     }
+    if (v.withheld !== undefined && v.withheld !== null) {
+      if (typeof v.withheld !== "string" || !v.withheld.trim()) fail(`video.withheld should be a sentence saying why the video is withheld. Got ${show(v.withheld)}.`);
+      videoWithheld = v.withheld.trim();
+    }
   }
 
-  return { match, labels, spells, transitions, videoOffset, generator, rawTracking: json.tracking };
+  return { match, labels, spells, transitions, videoOffset, videoWithheld, generator, rawTracking: json.tracking };
 }
 
 /** Opens a parsed run file. Throws RunFileError with a readable message when the file is not right. */
@@ -417,6 +424,7 @@ export function blankRun(frames: number, fps: number, title: string): Run {
       labels: [["X", total]],
       tracking: null,
       videoOffset: 0,
+      videoWithheld: null,
       generator: null,
     },
     "blank",
@@ -479,7 +487,7 @@ export function toRunFile(run: Run): RunFile {
     }
     file.tracking = { every: t.every, samples };
   }
-  file.video = { offset_frames: run.videoOffset };
+  file.video = run.videoWithheld ? { offset_frames: run.videoOffset, withheld: run.videoWithheld } : { offset_frames: run.videoOffset };
   return file;
 }
 

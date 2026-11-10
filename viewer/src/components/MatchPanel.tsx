@@ -90,10 +90,16 @@ export function MatchPanel() {
         <div className="match__empty">
           <FilmIcon size={26} />
           <p className="match__empty-title">No picture for this match yet</p>
-          <p className="match__empty-text">This run has no player tracking to draw from. Add the match video to watch it alongside the timeline.</p>
-          <button type="button" className="btn btn--quiet" onClick={pickVideo}>
-            Add the match video
-          </button>
+          {run.videoWithheld ? (
+            <p className="match__empty-text">This run has no player tracking to draw from. {run.videoWithheld}</p>
+          ) : (
+            <>
+              <p className="match__empty-text">This run has no player tracking to draw from. Add the match video to watch it alongside the timeline.</p>
+              <button type="button" className="btn btn--quiet" onClick={pickVideo}>
+                Add the match video
+              </button>
+            </>
+          )}
         </div>
       )}
       <div className="match__chip">

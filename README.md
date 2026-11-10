@@ -11,12 +11,13 @@ nothing else, and everything it has learned comes from **other** matches.
 - `viewer/`: a browser viewer for a result (possession timeline, team shape, the evidence behind
   each call). It ships with a simulated match and contains no match data. To see a real run in
   it, `python -m vantage export --data-dir /path/to/data --out run.json --page match.html` writes
-  the viewer with the match built in, as one local file; `scripts/export_external.py` does the
-  same for one of the open matches. Add `--video /path/to/tactical.mp4` and the page plays the
-  match video beside the analysis (the video is pointed at where it is, not copied);
-  `viewer/scripts/tape-check.mjs` then checks, in numbers and without taking a picture, that
-  video and analysis stay in step. A page made from the competition match holds its tracking
-  and must stay on your machine.
+  the viewer with the match built in, as one local file, and `node viewer/scripts/show.mjs
+  match.html` opens it as a window of its own; `scripts/export_external.py` does the same for
+  one of the open matches. A page made from the competition match holds its tracking and must
+  stay on your machine. It shows that match drawn from its tracking and never its video: the
+  organisers' rules do not allow output to be checked against the video, the run file of that
+  match says so, and the viewer then opens no video beside it. `viewer/scripts/page-check.mjs`
+  walks every tab of such a page and reports counts only, with no picture.
 
 ## Reproduce the submitted file
 
