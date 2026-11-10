@@ -16,3 +16,6 @@ __pycache__/
 viewer/node_modules/
 viewer/shots/
 .linux-site/
+
+# The files that go into the submission form. Built locally, not kept in the repository.
+submission/
