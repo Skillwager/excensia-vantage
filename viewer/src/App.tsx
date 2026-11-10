@@ -153,6 +153,32 @@ export function App() {
           try {
             const run = parseRunFile(carried.textContent, carried.getAttribute("data-name") ?? "match.run.json");
             show({ run, scene: null }, (link.seconds ?? 0) * run.fps);
+            // It can also say where the match video is on this computer (export --video), and
+            // then the footage opens with the analysis. The video is only shown once the browser
+            // has found the file and can play it; until then, and if it never can, the match
+            // stays drawn from its tracking.
+            const tape = carried.getAttribute("data-video");
+            if (tape) {
+              const name = carried.getAttribute("data-video-name") ?? "Match video";
+              const probe = document.createElement("video");
+              probe.preload = "metadata";
+              probe.muted = true;
+              const done = () => {
+                probe.onloadedmetadata = null;
+                probe.onerror = null;
+                probe.removeAttribute("src");
+                probe.load();
+              };
+              probe.onloadedmetadata = () => {
+                done();
+                if (!cancelled) setVideo({ url: tape, name });
+              };
+              probe.onerror = () => {
+                done();
+                if (!cancelled) setNotice(`${name} could not be opened from this page, so the match is drawn from its tracking. Add the video yourself to watch it here.`);
+              };
+              probe.src = tape;
+            }
             return;
           } catch (error) {
             setNotice(error instanceof RunFileError ? `The match built into this page can't be opened. ${error.message}` : "The match built into this page can't be opened.");

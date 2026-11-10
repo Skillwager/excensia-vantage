@@ -163,12 +163,14 @@ def write(path, run):
     return path
 
 
-def write_page(path, run, template, name="match.run.json"):
+def write_page(path, run, template, name="match.run.json", video=None):
     """Write the viewer with this run built in: one file that opens straight on the match.
 
     `template` is the built viewer (viewer/dist/index.html). The run goes into the page as a
-    data block the viewer reads when it starts. The same warning applies as for a run file: a
-    page made from the competition match holds its tracking and stays on this machine.
+    data block the viewer reads when it starts. `video` is the path of the match video on this
+    computer; the page then plays it beside the analysis. The video is not copied, only pointed
+    at, so the page works where that file is. The same warning applies as for a run file: a page
+    made from the competition match holds its tracking and stays on this machine.
     """
     with open(template, encoding="utf-8") as handle:
         html = handle.read()
@@ -177,8 +179,15 @@ def write_page(path, run, template, name="match.run.json"):
         raise ValueError("the viewer page at {} is not the built viewer".format(template))
     # "<" cannot end the block early or open a comment once it is written as an escape
     data = json.dumps(run, separators=(",", ":")).replace("<", "\\u003c")
-    block = '<script type="application/json" id="vantage-run" data-name="{}">{}</script>\n  '.format(
-        name.replace('"', ""), data)
+    tape = ""
+    if video:
+        from pathlib import Path
+
+        located = Path(video).resolve()
+        tape = ' data-video="{}" data-video-name="{}"'.format(
+            located.as_uri().replace('"', "%22"), located.name.replace('"', ""))
+    block = '<script type="application/json" id="vantage-run" data-name="{}"{}>{}</script>\n  '.format(
+        name.replace('"', ""), tape, data)
     with open(path, "w", newline="\n", encoding="utf-8") as handle:
         handle.write(html.replace(marker, block + marker))
     return path

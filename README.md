@@ -12,7 +12,10 @@ nothing else, and everything it has learned comes from **other** matches.
   each call). It ships with a simulated match and contains no match data. To see a real run in
   it, `python -m vantage export --data-dir /path/to/data --out run.json --page match.html` writes
   the viewer with the match built in, as one local file; `scripts/export_external.py` does the
-  same for one of the open matches. A page made from the competition match holds its tracking
+  same for one of the open matches. Add `--video /path/to/tactical.mp4` and the page plays the
+  match video beside the analysis (the video is pointed at where it is, not copied);
+  `viewer/scripts/tape-check.mjs` then checks, in numbers and without taking a picture, that
+  video and analysis stay in step. A page made from the competition match holds its tracking
   and must stay on your machine.
 
 ## Reproduce the submitted file
