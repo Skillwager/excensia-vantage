@@ -241,7 +241,27 @@ def summary(args):
         if chosen:
             print("mean over {} cells ({}): {:.4f}".format(
                 len(chosen), source, float(np.mean([rows[key][winner]["spellF1"] for key in chosen]))))
-    print("decode json: " + json.dumps(grid[winner]))
+
+    # The same setting on every match, whichever matches chose it: one row per source.
+    for metric in ("spellF1", "macroF1"):
+        print("\nmean {} by source and condition, setting #{} (mean* leaves out: {})".format(
+            metric, winner, ", ".join(args.skip) or "nothing"))
+        print("{:<13}".format("") + "".join("{:>9}".format(name) for name in settings)
+              + "{:>9}".format("mean*"))
+        for source in ("metrica", "dfl", None):
+            chosen = [match for match in matches if source is None or source_of(match) == source]
+            if not chosen:
+                continue
+            cells, kept = [], []
+            for name in settings:
+                values = [rows["{}|{}".format(name, match)][winner][metric] for match in chosen
+                          if "{}|{}".format(name, match) in rows]
+                cells.append("{:>9.3f}".format(np.mean(values)) if values else "{:>9}".format("-"))
+                if name not in args.skip:
+                    kept += values
+            print("{:<13}".format("{} ({})".format(source or "all", len(chosen))) + "".join(cells)
+                  + "{:>9.3f}".format(np.mean(kept)))
+    print("\ndecode json: " + json.dumps(grid[winner]))
 
 
 def main():

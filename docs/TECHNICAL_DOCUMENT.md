@@ -40,8 +40,8 @@ to look like automatic tracking, and the result is applied to the competition ma
 5. **Decoding into possessions.** The ranking metric counts possessions as intervals, so the
    labels come from a Viterbi path over home, away and dead ball, not from the best label per
    frame. Changing state costs something everywhere, less where the boundary model sees a
-   change and more where it does not; runs shorter than a minimum are absorbed. Smart Tagging
-   enters here as bounded votes (section 2).
+   change and more where it does not; runs shorter than a minimum are absorbed. The phase tags
+   of Smart Tagging enter here as bounded votes (section 2).
 
 Why this rather than something else. Rules written by hand on nearest-player distance are the
 published baseline, and its failure is the one the metric punishes: flicker, and no notion of a
@@ -152,16 +152,72 @@ defined and in how the decoder is constrained.
 
 ## 5. Validation, on other matches only
 
-Five folds over the ten matches; every held-out match is scored whole, with the organisers' own
-metric code, under several simulated recording conditions. One decoding setting is chosen for all
-folds and conditions together.
+Five folds over the ten matches, two held out at a time. Every held-out match is scored whole,
+with the organisers' own metric code, against its labels as its source gives them, under six
+simulated recording conditions: easy, typical, watched (most stoppages followed right through),
+harsh, and two drawn at random from the ranges used in training. The corrected tracking as
+published ("clean") is reported and not used for any choice. One decoding setting serves every
+fold and condition. It is chosen on Metrica's three sample games, because their labels come from
+the provider that made the ground truth; the seven DFL matches are reported beside them.
 
-<!-- RESULTS -->
-*Table filled in from `python scripts/cvb.py summary --tag v4` before submission.*
-<!-- /RESULTS -->
+spellF1, mean over the held-out matches (`python scripts/cv.py summary --tag v10b --sources metrica`):
 
-A model trained only on the seven DFL matches scores the same on Metrica's three sample games as
-on held-out DFL matches, so what it learns is not one provider's labelling habit.
+| Held-out matches | easy | typical | watched | random 1 | random 2 | harsh | mean of the six | clean |
+|---|---|---|---|---|---|---|---|---|
+| Metrica sample games (3) | 0.736 | 0.738 | 0.705 | 0.733 | 0.720 | 0.651 | **0.714** | 0.759 |
+| DFL matches (7) | 0.705 | 0.702 | 0.666 | 0.680 | 0.674 | 0.615 | 0.674 | 0.740 |
+| All ten | 0.714 | 0.712 | 0.678 | 0.696 | 0.688 | 0.626 | 0.686 | 0.746 |
+
+macroF1 on the same runs is 0.920 on Metrica's games and 0.926 on the DFL matches. These labels
+keep every short possession, which makes them hard: 42% of the true possessions are under three
+seconds.
+
+**What each step was worth**, each measured on held-out matches at its own best decoding setting:
+
+| Step | Measured on | Before | After |
+|---|---|---|---|
+| Labels as given instead of merged below two to three seconds | Metrica games 1 and 2, five conditions, both models scored against the unmerged labels | 0.645 | 0.739 |
+| The boundary model in the decoder | Metrica's three games, final models | 0.692 | 0.714 |
+| Touch features | Four matches, five conditions, under the earlier labels | 0.754 | 0.761 |
+| Tagged restarts as inputs | Metrica games 1 and 2, six conditions | 0.708 | 0.712 |
+
+The simulator that follows the ball through stoppages cannot be scored this way, because it
+changes the test itself: the simulated recordings it is tested on became harder and more like
+the real one. It was judged on the provided recording without labels. Just before the 57 tagged
+restarts that have five seconds of recording ahead of them, the file called dead ball at 41 with
+the earlier simulator, at 51 with the new one, and at 52 once the tags became inputs.
+
+**Where it still fails** (the ten held-out matches, typical condition, a possession counted as
+found at an overlap of one half): possessions of twelve seconds or more are found 94 to 96% of
+the time, those of six to twelve seconds 85%, three to six seconds 68%, and those under three
+seconds 38%. Nearly half of the misses are short possessions swallowed by the other team's
+possession around them. Stoppages of three seconds or more are found 90 to 100% of the time.
+
+**The submitted file, without labels** (`scripts/pipeline_check.py`, `scripts/behaviour_report.py`).
+Beside each total is the range of the same total for the model's own output on the ten held-out
+matches over the six conditions. A file that behaved unlike anything seen in validation would
+show here without a single label of the match.
+
+| From kick-off to the end of each half | The submitted file | Held-out matches |
+|---|---|---|
+| Frames with no tracked ball | 41% | 20 to 62% |
+| Of those, called dead ball | 90% | 45 to 93% |
+| Frames with a tracked ball that are called dead ball | 16% | 10 to 45% |
+| Dead ball, share of all frames | 46% | 32 to 54% |
+| Possessions per minute of live play | 4.7 | 4.4 to 8.1 |
+| Median possession | 8.0 s | 4.5 to 8.7 s |
+| Possessions under three seconds | 16% | 18 to 33% |
+| Median stoppage | 18.1 s | 10.9 to 25.1 s |
+
+The file has 262 possessions and 107 stoppages. It sits inside the validation range on every
+total but one, the share of short possessions, where it is just below. On the held-out matches
+the method finds fewer possessions than there are (5.9 a minute against 7.8), and that is the
+bias to expect here too.
+
+**Pipeline check on the public five minutes**, final file: all four criteria pass (teams agree
+on 96% of the frames both call live; 12 possessions for 17; dead ball found on 83% of the
+dead frames that have a tracked ball and 74% of those that do not). For completeness, spellF1
+there is 0.759 and macroF1 0.915; one possession moves that spellF1 by about six points.
 
 ## 6. Limitations
 
@@ -207,7 +263,7 @@ The same file, byte for byte, was produced on Windows 11 (Python 3.12.13) and on
 (Python 3.12.3). The feature code uses only exact arithmetic (no transcendental functions and no
 linear-algebra library), so the result does not depend on the processor's maths library.
 
-The submitted file has SHA-256 `<filled in at submission>`.
+The submitted file has SHA-256 `e45e63ad3cb0f8095b48949cfe56c1adcf300aadeca99c56b886ff77d090a5dd`.
 
 Retraining from the public sources is documented in the README. It is not needed to reproduce
 the file.

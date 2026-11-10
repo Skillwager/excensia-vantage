@@ -1,9 +1,10 @@
 {
   "decode": {
-    "boundary_weight": 8.0,
+    "boundary_bias": -0.5,
+    "boundary_weight": 12.0,
     "cost_floor": 0.25,
     "cost_from_dead": 14.0,
-    "cost_team": 0.5,
+    "cost_team": 2.0,
     "cost_to_dead": 14.0,
     "floor": 0.0001,
     "min_dead": 0.5,
