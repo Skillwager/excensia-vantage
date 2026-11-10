@@ -74,7 +74,10 @@ def main():
     if args.official:
         gt_path = os.path.join(args.official, "evaluation", "gt", "BAR-ATH_possession_gt_public.csv")
         truth = official.label_codes(official.read_label_csv(gt_path))
-        result = official.evaluate(truth, labels)
+        # The interval is the organisers' own bootstrap over the window's possessions
+        # (EVALUATION.md: run it before believing a gap). It is printed with the score so that
+        # nobody reads the score without it.
+        result = official.evaluate(truth, labels, bootstrap_n=0 if args.pass_fail_only else 1000)
         print("\n2. public five minutes (pipeline check only, 17 possessions)")
         # With --pass-fail-only the scores are not shown: a file that is still being worked on
         # is checked for what is broken, and its score is left unread until it is final.
@@ -83,6 +86,11 @@ def main():
                .format(result["spell_f1_mean"], result["macro_f1"], result["n_pred_spells"],
                        result["n_gt_spells"], result["mean_spell_duration_s"],
                        result["gt_mean_spell_duration_s"]))
+        if not args.pass_fail_only:
+            report("   5th to 95th percentile of 1,000 resamples of the 17 possessions: spellF1 "
+                   "{:.3f} to {:.3f}, macroF1 {:.3f} to {:.3f}".format(
+                       result["spell_bootstrap_low"], result["spell_bootstrap_high"],
+                       result["bootstrap_low"], result["bootstrap_high"]))
         for name in ("H", "A", "D"):
             row = result["per_class"][name]
             report("   {}  precision {:.3f}  recall {:.3f}  f1 {:.3f}".format(

@@ -44,7 +44,7 @@ The command prints the SHA-256 of the file it wrote and stores it in `Excensia.r
 together with the hashes of the inputs, the models and the package versions. The submitted file is
 
 ```
-sha256  e45e63ad3cb0f8095b48949cfe56c1adcf300aadeca99c56b886ff77d090a5dd
+sha256  4684384a2d27b9b3641e79e8388e40e7537b63f27b8fa52c491caa4c66737b7b
 ```
 
 Check any file before sending it:
@@ -93,17 +93,20 @@ pip install -r requirements-dev.txt
 python scripts/fetch_external.py                       # open DFL dataset, 2.6 GB, CC BY 4.0
 git clone https://github.com/metrica-sports/sample-data data/external/metrica-sample
 python scripts/cv.py prepare                           # simulate automatic tracking, build tables
-python scripts/cv.py fold --tag v7 --test J03WMX metrica1
-python scripts/cv.py fold --tag v7 --test J03WN1 metrica2
-python scripts/cv.py fold --tag v7 --test J03WOH metrica3
-python scripts/cv.py fold --tag v7 --test J03WOY J03WPY
-python scripts/cv.py fold --tag v7 --test J03WQQ J03WR9
-python scripts/cv.py summary --tag v7                  # one decoding setting for all folds
+python scripts/cv.py fold --tag cv --test J03WMX metrica1
+python scripts/cv.py fold --tag cv --test J03WN1 metrica2
+python scripts/cv.py fold --tag cv --test J03WOH metrica3
+python scripts/cv.py fold --tag cv --test J03WOY J03WPY
+python scripts/cv.py fold --tag cv --test J03WQQ J03WR9
+python scripts/cv.py summary --tag cv --sources metrica  # one decoding setting for all folds
 python scripts/train_final.py --decode '<json printed by the summary>'
 ```
 
-Every random draw is seeded from the match name, so the tables and the models can be rebuilt.
-Retraining is not needed to reproduce the submission: the models that produced it are committed.
+The defaults of these scripts are the settings of the shipped models (`models/vantage.json`
+records them: the weight on short possessions, the rounds, the seed). A fold takes about twenty
+minutes on eight cores. Every random draw is seeded from the match name, so the tables and the
+models can be rebuilt. Retraining is not needed to reproduce the submission: the models that
+produced it are committed.
 
 The other scripts are the checks behind statements in the technical document:
 

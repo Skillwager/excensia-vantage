@@ -44,13 +44,15 @@ def write_card(path, card):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--data-tag", default="v8")
+    parser.add_argument("--data-tag", default="v10")
     parser.add_argument("--variants", type=int, default=3)
     parser.add_argument("--rounds", type=int, default=model.ROUNDS)
     parser.add_argument("--boundary-rounds", type=int, default=300)
     parser.add_argument("--no-boundary", action="store_true")
     parser.add_argument("--metrica-weight", type=float, default=1.0)
-    parser.add_argument("--short-weight", type=float, default=1.0)
+    parser.add_argument("--short-weight", type=float, default=4.0,
+                        help="largest weight given to the rows of a short possession "
+                             "in the frame classifier (1 = none)")
     parser.add_argument("--short-seconds", type=float, default=8.0)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--decode", default="{}", help="JSON of DecodeConfig fields")

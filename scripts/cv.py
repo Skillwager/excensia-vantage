@@ -268,12 +268,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("prepare")
-    p.add_argument("--data-tag", default="v8")
+    p.add_argument("--data-tag", default="v10")
     p.add_argument("--variants", type=int, default=3)
     p.add_argument("--stride", type=int, default=6)
     p.add_argument("--matches", nargs="*", default=None)
     p = sub.add_parser("fold")
-    p.add_argument("--data-tag", default="v8")
+    p.add_argument("--data-tag", default="v10")
     p.add_argument("--variants", type=int, default=3)
     p.add_argument("--test", nargs="+", required=True)
     p.add_argument("--train-sources", nargs="*", default=None)
@@ -283,7 +283,7 @@ def main():
     p.add_argument("--no-boundary", action="store_true")
     p.add_argument("--metrica-weight", type=float, default=1.0,
                    help="weight of rows from Metrica's sample games relative to DFL rows")
-    p.add_argument("--short-weight", type=float, default=1.0,
+    p.add_argument("--short-weight", type=float, default=4.0,
                    help="largest weight given to the rows of a short possession (1 = none)")
     p.add_argument("--short-seconds", type=float, default=8.0,
                    help="possessions at least this long keep weight one")

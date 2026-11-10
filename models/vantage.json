@@ -8,7 +8,7 @@
     "cost_to_dead": 14.0,
     "floor": 0.0001,
     "min_dead": 0.5,
-    "min_possession": 0.4
+    "min_possession": 0.8
   },
   "features": [
     "a_cx",
@@ -274,9 +274,9 @@
       "sha256": "7aeccb1963f7eb8b8b2ce4e7e99ec6f42ddbc5d3c1a81f291848ddeb7da85b3d"
     },
     "state": {
-      "bytes": 8602966,
+      "bytes": 8590030,
       "file": "vantage_state.txt",
-      "sha256": "387bcf99d8ef58682c83c6ccd0d45bc03c9c85ea3faf62a39058b5822a137bfa"
+      "sha256": "2b28fa6e69c98fe9667f476432bcdb664b2ca11ded09fb2ef4a0fad88faf3717"
     }
   },
   "package": "0.1.0",
@@ -329,7 +329,7 @@
     "rows": 1432564,
     "seed": 0,
     "short_seconds": 8.0,
-    "short_weight": 1.0,
+    "short_weight": 4.0,
     "variants": 3
   }
 }

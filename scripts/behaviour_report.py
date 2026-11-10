@@ -68,10 +68,11 @@ def main():
                 np.mean([row[2][key] for row in chosen]), np.mean([row[3][key] for row in chosen])))
             for key, _ in COLUMNS))
     for label, position in (("the method", 2), ("the truth", 3)):
-        print("\nrange over all cells, " + label)
+        print("\nrange and mean over all cells, " + label)
         for key, title in COLUMNS:
             values = [row[position][key] for row in rows]
-            print("  {:<10} {:.3f} to {:.3f}".format(title, min(values), max(values)))
+            print("  {:<10} {:.3f} to {:.3f}   mean {:.3f}".format(
+                title, min(values), max(values), float(np.mean(values))))
 
 
 if __name__ == "__main__":
