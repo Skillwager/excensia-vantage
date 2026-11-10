@@ -33,6 +33,7 @@ from .labels import spell_stats
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_MODEL = os.path.join(os.path.dirname(HERE), "models", "vantage.json")
+DEFAULT_VIEWER = os.path.join(os.path.dirname(HERE), "viewer", "dist", "index.html")
 
 
 def sha256(path):
@@ -150,6 +151,11 @@ def export(args):
     os.makedirs(folder, exist_ok=True)
     viewer_export.write(args.out, run_file)
     print("wrote {}  ({:.1f} MB)".format(args.out, os.path.getsize(args.out) / 1e6))
+    if args.page:
+        viewer_export.write_page(args.page, run_file, args.viewer,
+                                 name=os.path.basename(args.out))
+        print("wrote {}  (the viewer with this match built in; open it in a browser)".format(
+            args.page))
     for key, value in viewer_export.summary(run_file).items():
         print("  {}: {}".format(key, value))
     print("  this file holds match tracking: keep it on this machine")
@@ -174,6 +180,10 @@ def main(argv=None):
                           help="keep one tracking sample in this many frames")
     exporter.add_argument("--no-evidence", action="store_true",
                           help="leave out the per-possession evidence shares (faster)")
+    exporter.add_argument("--page", default=None,
+                          help="also write the viewer with this match built in, as one .html file")
+    exporter.add_argument("--viewer", default=DEFAULT_VIEWER,
+                          help="the built viewer to use for --page")
     args = parser.parse_args(argv)
     return {"run": run, "export": export}[args.command](args)
 

@@ -146,6 +146,18 @@ export function App() {
         if (cancelled) return;
         const built = demoRun();
         demo.current = { run: built.run, scene: built.scene };
+        // A page can carry its own run (`python -m vantage export --page`): a script element of
+        // type application/json with the id "vantage-run". Such a page opens on that match.
+        const carried = document.getElementById("vantage-run");
+        if (carried?.textContent) {
+          try {
+            const run = parseRunFile(carried.textContent, carried.getAttribute("data-name") ?? "match.run.json");
+            show({ run, scene: null }, (link.seconds ?? 0) * run.fps);
+            return;
+          } catch (error) {
+            setNotice(error instanceof RunFileError ? `The match built into this page can't be opened. ${error.message}` : "The match built into this page can't be opened.");
+          }
+        }
         show(demo.current, (link.seconds ?? DEMO_START_SECONDS) * built.run.fps);
       }, 0);
     });

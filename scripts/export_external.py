@@ -30,6 +30,8 @@ def main():
     parser.add_argument("--model", default=cli.DEFAULT_MODEL)
     parser.add_argument("--every", type=int, default=5)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--page", default=None,
+                        help="also write the viewer with this match built in, as one .html file")
     args = parser.parse_args()
 
     state_model, boundary_model, card = cli.load_model(args.model)
@@ -63,6 +65,10 @@ def main():
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     viewer_export.write(args.out, run_file)
     print("wrote {}  ({:.1f} MB)".format(args.out, os.path.getsize(args.out) / 1e6))
+    if args.page:
+        viewer_export.write_page(args.page, run_file, cli.DEFAULT_VIEWER,
+                                 name=os.path.basename(args.out))
+        print("wrote {}  (the viewer with this match built in)".format(args.page))
     for key, value in viewer_export.summary(run_file).items():
         print("  {}: {}".format(key, value))
     score = evaluate.headline(evaluate.score(truth, predicted))

@@ -73,9 +73,13 @@ try {
       if (message.type() === "error") errors.push(message.text());
     });
     page.on("pageerror", (error) => errors.push(error.message));
-    await page.goto(pathToFileURL(join(root, "dist", "index.html")).href, { waitUntil: "load" });
-    await page.waitForSelector(".poss", { timeout: 30_000 });
-    await page.locator('input[type="file"][accept*="json"]').setInputFiles(resolve(file));
+    // a page that carries its own run (python -m vantage export --page) is opened as it is
+    const carriesRun = /\.html?$/i.test(file);
+    const target = carriesRun ? pathToFileURL(resolve(file)).href : pathToFileURL(join(root, "dist", "index.html")).href;
+    // the viewer reads a starting moment from the address: #t=mm:ss
+    await page.goto(typeof args.at === "string" ? target + "#t=" + args.at : target, { waitUntil: "load" });
+    await page.waitForSelector(".poss", { timeout: 120_000 });
+    if (!carriesRun) await page.locator('input[type="file"][accept*="json"]').setInputFiles(resolve(file));
     // the page either shows the file or says why not
     await page.waitForFunction(() => !document.querySelector(".notice--busy"), null, { timeout: 120_000 });
     await page.waitForTimeout(800);

@@ -9,7 +9,11 @@ nothing else, and everything it has learned comes from **other** matches.
 
 - [docs/TECHNICAL_DOCUMENT.md](docs/TECHNICAL_DOCUMENT.md): the method, the data, the limits.
 - `viewer/`: a browser viewer for a result (possession timeline, team shape, the evidence behind
-  each call). It ships with a simulated match and contains no match data.
+  each call). It ships with a simulated match and contains no match data. To see a real run in
+  it, `python -m vantage export --data-dir /path/to/data --out run.json --page match.html` writes
+  the viewer with the match built in, as one local file; `scripts/export_external.py` does the
+  same for one of the open matches. A page made from the competition match holds its tracking
+  and must stay on your machine.
 
 ## Reproduce the submitted file
 
