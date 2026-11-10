@@ -31,6 +31,10 @@ class DecodeConfig:
     cost_to_dead: float = 10.0      # team -> dead ball
     cost_from_dead: float = 10.0    # dead ball -> team
     boundary_weight: float = 0.0    # how far the boundary model moves those costs (0 = not used)
+    boundary_bias: float = 0.0      # the boundary model's log-odds at which a change costs its
+                                    # plain cost. 0 is even odds. The boundary model is rarely
+                                    # that sure of the exact frame even at a real change, so a
+                                    # negative value lets it speak at lower odds.
     min_possession: float = 1.0     # seconds
     min_dead: float = 2.0           # seconds
     floor: float = 1e-4             # probabilities are clipped here before the log
@@ -81,6 +85,8 @@ def viterbi_many(log_prob, configs, odds=None):
         return np.zeros((n, 0), dtype=np.int8)
     base = np.stack([_base_cost(config) for config in configs])
     weight = np.array([config.boundary_weight for config in configs], dtype=np.float64)
+    bias = np.array([config.boundary_bias for config in configs], dtype=np.float64)
+    bias = bias[:, None, None] * _OFF_DIAGONAL
     floor = np.array([config.cost_floor for config in configs], dtype=np.float64)
     floor = floor[:, None, None] * _OFF_DIAGONAL
     varying = odds is not None and bool(np.any(weight != 0.0))
@@ -91,7 +97,7 @@ def viterbi_many(log_prob, configs, odds=None):
     cost = base
     for index in range(1, t):
         if varying:
-            cost = np.maximum(base - weight[:, None, None] * odds[index], floor)
+            cost = np.maximum(base - weight[:, None, None] * (odds[index] - bias), floor)
         candidate = score[:, :, None] - cost
         best = np.argmax(candidate, axis=1)
         score = np.take_along_axis(candidate, best[:, None, :], axis=1)[:, 0, :] + emission[index]

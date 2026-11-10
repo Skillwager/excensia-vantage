@@ -27,22 +27,31 @@ from vantage import evaluate, external, model
 from vantage import decode as decoding
 from vantage.external import ALL_MATCHES, ROOT, labelled_halves, source_of
 
-GRID_FIELDS = ("cost_team", "cost_to_dead", "cost_from_dead", "boundary_weight",
+GRID_FIELDS = ("cost_team", "cost_to_dead", "cost_from_dead", "boundary_weight", "boundary_bias",
                "min_possession", "min_dead")
 
 
 def decode_grid(with_boundary):
     """The decoding settings that are compared. A stoppage costs the same to enter and to leave."""
     grid = []
+    if not with_boundary:
+        for cost_team in (0.5, 2.0, 6.0, 12.0):
+            for cost_dead in (10.0, 14.0, 20.0):
+                for min_possession in (0.2, 0.4, 0.8):
+                    grid.append(decoding.DecodeConfig(
+                        cost_team=cost_team, cost_to_dead=cost_dead, cost_from_dead=cost_dead,
+                        min_possession=min_possession, min_dead=0.5))
+        return grid
     for cost_team in (0.5, 2.0):
-        for cost_dead in (10.0, 14.0, 20.0):
-            for weight in ((0.0, 2.0, 4.0, 6.0, 8.0, 12.0) if with_boundary else (0.0,)):
-                for min_possession in (0.0, 0.2, 0.4, 1.0):
-                    for min_dead in (0.5, 1.5):
+        for cost_dead in (10.0, 14.0):
+            for weight in (0.0, 4.0, 8.0, 12.0):
+                # a bias only matters where the boundary model is used
+                for bias in ((0.0, -0.5, -1.0, -1.5, -2.0) if weight else (0.0,)):
+                    for min_possession in (0.2, 0.4, 0.8):
                         grid.append(decoding.DecodeConfig(
                             cost_team=cost_team, cost_to_dead=cost_dead,
                             cost_from_dead=cost_dead, boundary_weight=weight,
-                            min_possession=min_possession, min_dead=min_dead))
+                            boundary_bias=bias, min_possession=min_possession, min_dead=0.5))
     return grid
 
 
@@ -53,12 +62,13 @@ def grid_scores(halves, grid):
     odds = [decoding.boundary_log_odds(boundary) for _, _, boundary in halves]
 
     def key(c):
-        return (c.cost_team, c.cost_to_dead, c.cost_from_dead, c.boundary_weight)
+        return (c.cost_team, c.cost_to_dead, c.cost_from_dead, c.boundary_weight, c.boundary_bias)
 
     unique_keys = sorted({key(c) for c in grid})
     position = {k: index for index, k in enumerate(unique_keys)}
     unique = [decoding.DecodeConfig(cost_team=a, cost_to_dead=b, cost_from_dead=c,
-                                    boundary_weight=w) for a, b, c, w in unique_keys]
+                                    boundary_weight=w, boundary_bias=s)
+              for a, b, c, w, s in unique_keys]
     paths = [decoding.viterbi_many(log_prob, unique, odd) for log_prob, odd in zip(log_probs, odds)]
     scores = []
     for config in grid:
@@ -205,12 +215,13 @@ def summary(args):
         print("#{:<4} mean spellF1 {:.4f} macroF1 {:.4f} | {}".format(
             index, mean[index], macro[:, index].mean(),
             " ".join("{}={}".format(field, grid[index][field]) for field in GRID_FIELDS)))
-    by_weight = {}
-    for index, config in enumerate(grid):
-        weight = config["boundary_weight"]
-        by_weight[weight] = max(by_weight.get(weight, 0.0), float(mean[index]))
-    print("best mean spellF1 by boundary weight: " + "  ".join(
-        "{}: {:.4f}".format(weight, value) for weight, value in sorted(by_weight.items())))
+    for field in ("boundary_weight", "boundary_bias", "min_possession"):
+        best = {}
+        for index, config in enumerate(grid):
+            value = config.get(field, 0.0)
+            best[value] = max(best.get(value, 0.0), float(mean[index]))
+        print("best mean spellF1 by {}: ".format(field) + "  ".join(
+            "{}: {:.4f}".format(value, score) for value, score in sorted(best.items())))
 
     winner = int(order[0])
     settings = sorted({key.split("|")[0] for key in rows})
