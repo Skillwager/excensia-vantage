@@ -7,14 +7,16 @@ published counterpart to compare with:
     mean of 20.5 tracked objects over graded frames
     46 track slots
 """
-import sys
+import argparse
 import time
 
 import numpy as np
 
 from vantage import competition, epts
 
-data_dir = sys.argv[1]
+parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+parser.add_argument("data_dir", help="the organisers' bundle: the folder that contains tactical/")
+data_dir = parser.parse_args().data_dir
 paths = competition.tactical_paths(data_dir)
 started = time.time()
 data = epts.read(paths["meta"], paths["raw"])

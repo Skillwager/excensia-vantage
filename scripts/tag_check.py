@@ -4,14 +4,18 @@ Needs a tracking-only run (python -m vantage run ... --no-tagging) and the data 
 shares only. If a kind of tag were read the wrong way round, its agreement would sit well below
 one half.
 """
-import sys
+import argparse
 
 import numpy as np
 
 from vantage import A, D, H, X, competition, epts, tagging
 from vantage import _official_metrics as official
 
-csv_path, data_dir = sys.argv[1], sys.argv[2]
+parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+parser.add_argument("csv", help="a tracking-only submission file")
+parser.add_argument("data_dir", help="the organisers' bundle: the folder that contains tactical/")
+args = parser.parse_args()
+csv_path, data_dir = args.csv, args.data_dir
 labels = official.label_codes(official.read_label_csv(csv_path))
 paths = competition.tactical_paths(data_dir)
 home, away = epts.read_team_names(paths["meta"])
