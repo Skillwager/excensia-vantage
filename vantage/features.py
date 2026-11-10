@@ -20,7 +20,7 @@ import warnings
 
 import numpy as np
 
-from . import FPS
+from . import A, FPS, H
 
 # -- parameters --------------------------------------------------------------------------------
 # These describe measurement, not football: how far apart two samples must be to estimate a
@@ -284,6 +284,36 @@ def _touch_features(ball_velocity, seen, nearest_home, nearest_away):
     return out
 
 
+def restart_features(t, restarts):
+    """Four features from tagged restarts: how far each frame is from one, and whose it is.
+
+    `restarts` is a list of (row, team): the row at which a tag says play resumed after a
+    stoppage, and the team that restarted (H, A or None when the tag does not say). A set-piece
+    tag is evidence of two things at once: the seconds before it were a stoppage, and from it
+    on the ball is alive. Without tags the features sit at their far value and say nothing.
+    """
+    until = np.full(t, TIME_CAP, dtype=np.float32)
+    since = np.full(t, TIME_CAP, dtype=np.float32)
+    next_team = np.zeros(t, dtype=np.float32)
+    last_team = np.zeros(t, dtype=np.float32)
+    index = np.arange(t)
+    for row, team in sorted(restarts, key=lambda item: item[0]):
+        row = int(min(max(row, 0), t - 1))
+        sign = {H: 1.0, A: -1.0}.get(team, 0.0)
+        ahead = np.minimum((row - index) / float(FPS), TIME_CAP)
+        closer = (index <= row) & (ahead < until)
+        until[closer] = ahead[closer]
+        next_team[closer] = sign
+        behind = np.minimum((index - row) / float(FPS), TIME_CAP)
+        closer = (index >= row) & (behind <= since)
+        since[closer] = behind[closer]
+        last_team[closer] = sign
+    next_team[until >= TIME_CAP] = 0.0
+    last_team[since >= TIME_CAP] = 0.0
+    return {"sp_until": until, "sp_since": since, "sp_next_team": next_team,
+            "sp_last_team": last_team}
+
+
 # -- the table ---------------------------------------------------------------------------------
 
 def build(half):
@@ -450,6 +480,9 @@ def build(half):
             past = _rolling_mean(series, window, 0)
             future = _rolling_mean(series, 0, window)
             f["{}_d{}".format(name, window)] = future - past
+
+    # -- tagged restarts, where the source has them ------------------------------------------------
+    f.update(restart_features(t, half.meta.get("restarts", ())))
 
     names = sorted(f)
     table = np.empty((t, len(names)), dtype=np.float32)

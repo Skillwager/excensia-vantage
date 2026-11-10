@@ -13,7 +13,9 @@ import zlib
 
 import numpy as np
 
-from . import D, FPS, X, dfl, metrica_sample
+from dataclasses import replace
+
+from . import A, D, FPS, H, X, dfl, metrica_sample
 from .degrade import DegradeConfig, degrade, sample_config
 from .features import build
 from .labels import CONTROL_SECONDS, change_distances, harmonise, run_lengths
@@ -52,7 +54,8 @@ def condition_half(half, match, name):
     """One labelled half as it would be recorded under the named condition. Deterministic."""
     rng = np.random.default_rng(seed_for("eval", match, half.period, name))
     setting = CONDITIONS[name]
-    return observed(half, rng, sample_config(rng) if setting == "random" else setting)
+    noisy = observed(half, rng, sample_config(rng) if setting == "random" else setting)
+    return with_tags(noisy, np.random.default_rng(seed_for("tags", "eval", match, half.period, name)))
 
 
 def seed_for(*parts):
@@ -85,6 +88,46 @@ def observed(half, rng, config):
     return degrade(half, rng, config)
 
 
+def tagged_restarts(half, rng):
+    """Restart tags of the kind Smart Tagging gives for set pieces, drawn from a half's labels.
+
+    The provided recording comes with about sixty set-piece tags, each of which places a restart
+    to within a second or two and, for corners, goal kicks and free kicks, names the team. No
+    external match has such tags, so they are imitated: some of the half's real restarts are
+    tagged, with an error in time, and some of those name the team. How many, how exact and how
+    often with a team are drawn afresh each time, and a few tags point at nothing, because the
+    real tags are automatic and none of this can be measured on the recording.
+    """
+    labels = half.labels
+    t = len(labels)
+    coverage = rng.uniform(0.25, 0.75)
+    with_team = rng.uniform(0.3, 0.7)
+    spread = rng.uniform(0.3, 1.5)
+    shift = rng.uniform(-1.0, 1.0)
+    false_share = rng.uniform(0.0, 0.1)
+    out = [(int(np.clip(round((shift + rng.normal(0.0, spread)) * FPS), 0, t - 1)), None)]  # kick-off
+    dead = np.concatenate(([0], (labels == D).astype(np.int8), [0]))
+    edges = np.diff(dead)
+    for start, stop in zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)):
+        if stop >= t or stop - start < 2 * FPS or rng.random() >= coverage:
+            continue
+        row = stop + int(round((shift + rng.normal(0.0, spread)) * FPS))
+        team = None
+        if labels[stop] in (H, A) and rng.random() < with_team:
+            team = int(labels[stop])
+            if rng.random() < 0.03:
+                team = A if team == H else H
+        out.append((int(np.clip(row, 0, t - 1)), team))
+    for _ in range(int(rng.poisson(false_share * len(out)))):
+        out.append((int(rng.integers(0, t)), (H, A, None)[int(rng.integers(0, 3))]))
+    return sorted(out, key=lambda pair: pair[0])
+
+
+def with_tags(half, rng):
+    """The half with imitated restart tags attached (see `tagged_restarts`)."""
+    return replace(half, meta=dict(half.meta, restarts=tagged_restarts(half, rng)))
+
+
 def train_table_path(tag, match, period, variant, view):
     return os.path.join(CACHE, "train_" + tag,
                         "{}_p{}_k{}_{}.npz".format(match, period, variant, view))
@@ -97,6 +140,9 @@ def prepare_match(match, tag, variants, stride):
         for variant in range(variants):
             rng = np.random.default_rng(seed_for("train", match, half.period, variant))
             noisy = observed(half, rng, sample_config(rng))
+            # the tags have their own stream, so adding them moved nothing else
+            noisy = with_tags(noisy, np.random.default_rng(
+                seed_for("tags", "train", match, half.period, variant)))
             for view, version in (("own", noisy), ("swap", noisy.swapped())):
                 path = train_table_path(tag, match, half.period, variant, view)
                 if os.path.isfile(path):

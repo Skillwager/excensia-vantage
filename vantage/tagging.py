@@ -79,6 +79,29 @@ def team_code(name, home_name, away_name):
     return H if scores[0] > scores[1] else A
 
 
+# Seconds from the start of a set-piece clip to the restart it shows. The clips are cut a fixed
+# time before the restart: the two start-of-half kick-off tags begin 3.52 and 3.28 seconds before
+# the kick-off frames the organisers publish, and a label-free profile of the tracking around the
+# other set pieces (scripts/set_piece_profile.py) has its step at the same place.
+RESTART_LEAD = 3.5
+
+
+def restarts(instances, home_name, away_name, fps=FPS):
+    """[(video frame, team)]: when each tagged set piece put the ball back in play, and for whom.
+
+    The team is H, A or None. Corners, goal kicks and free kicks carry a team; throw-ins and
+    kick-offs do not. These go to the model as features (vantage/features.py), which is how it
+    was trained to use them on other matches; they do not set any label.
+    """
+    out = []
+    for item in instances:
+        if item["code"] != SET_PIECE:
+            continue
+        frame = item["start"] + int(round(RESTART_LEAD * fps))
+        out.append((frame, team_code(item["tags"].get("Team"), home_name, away_name)))
+    return sorted(out, key=lambda pair: pair[0])
+
+
 def votes(instances, n_frames, home_name, away_name):
     """(n_frames, 3) log-odds to add to log-probabilities of home, away, dead ball."""
     out = np.zeros((n_frames, 3), dtype=np.float64)

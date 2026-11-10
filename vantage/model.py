@@ -61,6 +61,23 @@ def predict_table(booster, table):
     return booster.predict(table, num_threads=PARAMS["num_threads"])
 
 
+def _tables(half, names):
+    """The feature tables of a half and of its mirror image, with the columns a model expects.
+
+    `names` is the model's own feature list. Features the builder has gained since the model was
+    trained are left out; a feature the model needs and the builder lacks is an error.
+    """
+    own_names, table = build(half)
+    _, mirrored = build(half.swapped())
+    if names is None or list(names) == list(own_names):
+        return table, mirrored
+    missing = [name for name in names if name not in own_names]
+    if missing:
+        raise ValueError("the model needs features that are not built: " + ", ".join(missing[:5]))
+    columns = [own_names.index(name) for name in names]
+    return table[:, columns], mirrored[:, columns]
+
+
 def predict_half(booster, half, names=None):
     """(T, 3) probabilities for home, away, dead ball, averaged over the two mirror views.
 
@@ -68,11 +85,8 @@ def predict_half(booster, half, names=None):
     second answer is mapped back and the two are averaged. A model that is exactly symmetric
     between the teams cannot favour one of them, and the average is also slightly less noisy.
     """
-    own_names, table = build(half)
-    if names is not None and list(names) != list(own_names):
-        raise ValueError("feature names differ from the ones the model was trained on")
+    table, mirrored_table = _tables(half, names)
     direct = predict_table(booster, table)
-    _, mirrored_table = build(half.swapped())
     mirrored = predict_table(booster, mirrored_table)
     mirrored = mirrored[:, [A, H, 2]]
     return (0.5 * (direct + mirrored)).astype(np.float64)
@@ -84,10 +98,7 @@ def predict_half_both(booster, boundary_booster, half, names=None):
     The kinds of change (turnover, stoppage, restart) read the same from either side, so the
     mirrored boundary answer needs no remapping.
     """
-    own_names, table = build(half)
-    if names is not None and list(names) != list(own_names):
-        raise ValueError("feature names differ from the ones the model was trained on")
-    _, mirrored_table = build(half.swapped())
+    table, mirrored_table = _tables(half, names)
     state = 0.5 * (predict_table(booster, table)
                    + predict_table(booster, mirrored_table)[:, [A, H, 2]])
     if boundary_booster is None:

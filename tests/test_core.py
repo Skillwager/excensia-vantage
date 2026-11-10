@@ -247,6 +247,36 @@ def test_features_are_mirror_images_under_a_team_swap():
                            equal_nan=True, atol=1e-4), signed
 
 
+def test_tagged_restarts_read_the_same_from_either_side():
+    half = toy_half()
+    half.meta["restarts"] = [(100, H), (250, None), (330, A)]
+    names, table = build(half)
+    _, swapped = build(half.swapped())
+    for same in ("sp_until", "sp_since"):
+        assert np.array_equal(table[:, names.index(same)], swapped[:, names.index(same)]), same
+    for signed in ("sp_next_team", "sp_last_team"):
+        assert np.array_equal(table[:, names.index(signed)], -swapped[:, names.index(signed)]), signed
+    until = table[:, names.index("sp_until")]
+    assert until[100] == 0.0 and until[75] == 1.0 and until[331] == 30.0
+    assert table[90, names.index("sp_next_team")] == 1.0
+    assert table[240, names.index("sp_next_team")] == 0.0          # a tag without a team
+    assert table[335, names.index("sp_last_team")] == -1.0
+
+
+def test_a_half_without_tags_gets_the_far_values():
+    names, table = build(toy_half())
+    assert np.all(table[:, names.index("sp_until")] == 30.0)
+    assert np.all(table[:, names.index("sp_next_team")] == 0.0)
+
+
+def test_set_piece_tags_become_restarts_a_fixed_time_into_the_clip():
+    items = [instance("SET PIECES", 100, 975, Team="Home", Type="Corner Kick"),
+             instance("SET PIECES", 2000, 2875, Team="N/A", Type="Throw-in"),
+             instance("PROGRESSION", 10, 60, Team="Home")]
+    found = tagging.restarts(items, "Home", "Away")
+    assert found == [(100 + int(round(tagging.RESTART_LEAD * 25)), H), (2000 + int(round(tagging.RESTART_LEAD * 25)), None)]
+
+
 def test_touches_are_found_where_the_ball_changes_direction_next_to_a_player():
     frames = 300
     ball = np.zeros((frames, 2), dtype=np.float32)

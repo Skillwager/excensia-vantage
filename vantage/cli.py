@@ -76,6 +76,11 @@ def analyse(args):
         home_name, away_name = epts.read_team_names(paths["meta"])
         instances = tagging.load(paths["tagging"])
         vote = tagging.votes(instances, competition.N_FRAMES, home_name, away_name)
+        # tagged set pieces: when play resumed and for whom, as features for the model
+        tagged = tagging.restarts(instances, home_name, away_name)
+        for half in halves:
+            half.meta["restarts"] = [(frame - half.first_frame, team) for frame, team in tagged
+                                     if 0 <= frame - half.first_frame < half.n_frames]
 
     decoded, states = [], []
     for half in halves:

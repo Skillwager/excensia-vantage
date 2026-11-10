@@ -49,13 +49,17 @@ class Half:
             labels = self.labels.copy()
             labels[self.labels == H] = A
             labels[self.labels == A] = H
+        meta = dict(self.meta)
+        if "restarts" in meta:
+            other = {H: A, A: H}
+            meta["restarts"] = [(row, other.get(team)) for row, team in meta["restarts"]]
         return replace(
             self,
             ball_xy=-self.ball_xy,
             home_xy=-self.away_xy,
             away_xy=-self.home_xy,
             labels=labels,
-            meta=dict(self.meta, swapped=not self.meta.get("swapped", False)),
+            meta=dict(meta, swapped=not self.meta.get("swapped", False)),
         )
 
     def check(self):
