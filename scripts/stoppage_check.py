@@ -8,7 +8,7 @@ frames that are truly dead ball, how many have a tracked ball; of the frames tru
 many have none; and how the players and the ball behave in each case. It answers one question,
 what the ground truth means by a dead ball in terms the tracking can see. Nothing is fitted.
 
-    python scripts/stoppage_check.py --data-dir /path/to/data --csv runs/match/x/excensia.csv \
+    python scripts/stoppage_check.py --data-dir /path/to/data --csv runs/match/x/Excensia.csv \
         --official external/more-than-a-hack-2027
 """
 

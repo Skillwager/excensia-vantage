@@ -1,6 +1,6 @@
 """Command line: regenerate the submission file from the provided data bundle.
 
-    python -m vantage run --data-dir /path/to/data --out excensia.csv
+    python -m vantage run --data-dir /path/to/data --out Excensia.csv
 
 `--data-dir` is the organisers' bundle (the folder that contains `tactical/`). It is read, never
 copied. The only thing written is the label file, plus a small receipt next to it that records

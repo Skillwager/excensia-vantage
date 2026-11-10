@@ -13,7 +13,7 @@ Three things, none of which chooses anything:
    the truth is known, so a run that behaves unlike anything seen in validation shows up here
    without any ground truth.
 
-    python scripts/pipeline_check.py runs/match/x/excensia.csv --data-dir /path/to/data \
+    python scripts/pipeline_check.py runs/match/x/Excensia.csv --data-dir /path/to/data \
         --official external/more-than-a-hack-2027
 """
 

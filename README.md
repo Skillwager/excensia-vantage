@@ -20,7 +20,7 @@ repository and must not be added to it.
 python -m venv .venv
 .venv/bin/pip install -r requirements.txt            # Windows: .venv\Scripts\pip
 .venv/bin/pip install --no-deps -e .
-.venv/bin/python -m vantage run --data-dir /path/to/data --out excensia.csv
+.venv/bin/python -m vantage run --data-dir /path/to/data --out Excensia.csv
 ```
 
 Python 3.12 (`.python-version` has the exact one used). The pinned packages in `requirements.txt`
@@ -33,7 +33,7 @@ trained models are fixed files in `models/`, the features use only exact arithme
 transcendental functions, no linear-algebra library), and a prediction is a sum of constants chosen
 by threshold tests. The same file, byte for byte, came out on Windows 11 and on Ubuntu 24.04.
 
-The command prints the SHA-256 of the file it wrote and stores it in `excensia.receipt.json`
+The command prints the SHA-256 of the file it wrote and stores it in `Excensia.receipt.json`
 together with the hashes of the inputs, the models and the package versions. The submitted file is
 
 ```
@@ -43,8 +43,8 @@ sha256  <filled in at submission>
 Check any file before sending it:
 
 ```bash
-python /path/to/more-than-a-hack-2027/evaluation/validate_submission.py excensia.csv
-python scripts/pipeline_check.py excensia.csv --data-dir /path/to/data \
+python /path/to/more-than-a-hack-2027/evaluation/validate_submission.py Excensia.csv
+python scripts/pipeline_check.py Excensia.csv --data-dir /path/to/data \
     --official /path/to/more-than-a-hack-2027
 ```
 
