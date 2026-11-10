@@ -12,12 +12,24 @@ the provided recording (scripts/domain_report.py prints the same totals for the 
 the simulator, side by side):
 
 * The ball is followed smoothly for long unbroken runs and then is gone for a long time, once or
-  twice a minute. It does not flicker. Most disappearances go with a stoppage: the track ends
+  twice a minute. It does not flicker. Many disappearances go with a stoppage: the track ends
   around the moment play stops and resumes shortly after the restart, once the ball is moving
   again (a run of the ball almost never begins with the ball at rest).
-* At a stoppage where the ball never leaves the pitch (a foul), the ball rolls to a stop in view
-  and the track holds it for a few seconds before losing it. A ball at rest is almost never
-  tracked for longer than ten seconds.
+* A stoppage does not have to hide the ball. The tracker can follow it all the way through one,
+  while it is fetched, carried to the line and put down. A first version of this simulator
+  assumed that was rare. The pipeline check on the public five minutes showed otherwise (two of
+  its four stoppages have a ball on every frame), and label-free totals agree: on a quarter of
+  the recording the ball is tracked while the players are close to standing still. How often it
+  happens is now one more unknown drawn from a wide range.
+* A ball that is followed through a stoppage is rarely still. While the players are close to
+  standing, the tracked ball is at rest on only about a fifth of the frames; the rest of the time
+  it is rolled, carried or passed about at a few metres a second (scripts/slow_report.py, no
+  labels). Corrected data does not show this: one source freezes the ball when play stops and the
+  other has no ball at all. So the simulator moves the ball itself during a followed stoppage:
+  it rests, goes along with the nearest player, or is passed to another, and ends on the spot
+  play restarts from.
+* At a stoppage where the ball never leaves the pitch (a foul), the track may also hold the ball
+  for a few seconds and then lose it.
 * It is also lost during live play, a few times a half, and can stay lost for many seconds.
 * A visible ball is almost never off the pitch.
 * Player tracks are smooth and long. Players go missing for long spells rather than single
@@ -41,21 +53,22 @@ from . import D, FPS
 @dataclass
 class DegradeConfig:
     # -- ball: stoppages ------------------------------------------------------------------
-    dead_hidden: float = 0.85         # chance a short stoppage (under 5 s) hides the ball
-    dead_watched: float = 0.03        # chance a longer stoppage is tracked throughout when the
-                                      # ball leaves the pitch (throw-in, corner, goal kick)
-    dead_watched_in: float = 0.2      # chance a stoppage under 10 s with the ball still on the
-                                      # pitch (a foul) is tracked throughout
+    dead_hidden: float = 0.7          # chance a short stoppage (under 5 s) hides the ball
+    dead_watched: float = 0.25        # chance a longer stoppage is tracked throughout
+    dead_watched_in: float = 0.4      # the same for a stoppage under 10 s with the ball still on
+                                      # the pitch (a foul)
+    hold_at_line: float = 0.5         # chance that a ball followed through a stoppage is kept at
+                                      # the edge of the pitch while it is off it, not lost there
     linger: float = 3.0               # s, mean time the track holds a ball that has stopped on
                                       # the pitch before losing it
     lose_shift: float = 0.0           # s, mean of when the track ends relative to the stoppage
     lose_spread: float = 0.8          # s
-    early_find: float = 0.05          # chance the ball is picked up again before the restart
-    early_find_mean: float = 2.0      # s before the restart, when it is
+    early_find: float = 0.25          # chance the ball is picked up again before the restart
+    early_find_mean: float = 4.0      # s before the restart, when it is
     find_lag: float = 0.3             # s after the restart before the moving ball is picked up
     long_miss: float = 0.05           # chance the restart is missed and the ball found much later
     # -- ball: lost in live play -----------------------------------------------------------
-    live_loss_rate: float = 0.8       # losses per minute of live play
+    live_loss_rate: float = 0.5       # losses per minute of live play
     live_loss_median: float = 6.0     # s
     until_restart: float = 0.35       # chance a live loss lasts until the next restart
     w_air: float = 1.0                # how much height, speed and crowding raise the loss rate
@@ -63,7 +76,7 @@ class DegradeConfig:
     w_crowd: float = 0.6
     # -- ball: measurement -----------------------------------------------------------------
     out_margin: float = 1.5           # m: a ball further than this off the pitch is not reported
-    ball_drift: float = 0.15          # m, slow error
+    ball_drift: float = 0.5           # m, slow error
     ball_smooth: int = 5              # frames: the tracker's own smoothing of the ball's path
     parallax: float = 0.1             # 0 = true ground position, 1 = full single-camera parallax
     camera_x: float = 0.0
@@ -84,14 +97,15 @@ class DegradeConfig:
 def sample_config(rng):
     """One random noise setting. Wide on purpose: see the module docstring."""
     return DegradeConfig(
-        dead_hidden=float(rng.uniform(0.5, 1.0)),
-        dead_watched=float(rng.uniform(0.0, 0.1)),
-        dead_watched_in=float(rng.uniform(0.0, 0.4)),
+        dead_hidden=float(rng.uniform(0.2, 1.0)),
+        dead_watched=float(rng.uniform(0.0, 0.7)),
+        dead_watched_in=float(rng.uniform(0.0, 0.9)),
+        hold_at_line=float(rng.uniform(0.0, 1.0)),
         linger=float(rng.uniform(1.0, 6.0)),
         lose_shift=float(rng.uniform(-2.5, 0.5)),
         lose_spread=float(rng.uniform(0.3, 2.0)),
-        early_find=float(rng.uniform(0.0, 0.15)),
-        early_find_mean=float(rng.uniform(0.5, 4.0)),
+        early_find=float(rng.uniform(0.0, 0.5)),
+        early_find_mean=float(rng.uniform(0.5, 8.0)),
         find_lag=float(rng.uniform(0.05, 1.0)),
         long_miss=float(rng.uniform(0.0, 0.15)),
         live_loss_rate=float(np.exp(rng.uniform(np.log(0.1), np.log(2.0)))),
@@ -101,7 +115,7 @@ def sample_config(rng):
         w_fast=float(rng.uniform(0.0, 1.2)),
         w_crowd=float(rng.uniform(0.0, 1.2)),
         out_margin=float(rng.uniform(0.5, 4.0)),
-        ball_drift=float(rng.uniform(0.0, 0.35)),
+        ball_drift=float(rng.uniform(0.1, 1.0)),
         ball_smooth=int(rng.choice((3, 5, 7, 9))),
         parallax=float(rng.uniform(0.0, 0.3)),
         camera_x=float(rng.uniform(-12.0, 12.0)),
@@ -174,11 +188,91 @@ def _frames(seconds):
 
 # -- ball visibility ---------------------------------------------------------------------------
 
+def _wander(half, rng, start, stop, ball):
+    """Where the ball is during a stoppage the tracker follows right through, (stop - start, 2).
+
+    It starts where play stopped and ends where play restarts. In between it is moved about in
+    short stages: left where it is, taken along by the nearest player, or passed to another one.
+    For the last part of the stoppage it is at the restart spot, in the hands or at the feet of
+    whoever will take the restart, and moves about a little with him.
+    """
+    t = half.n_frames
+    length, width = half.pitch
+    first = ball[start - 1] if start > 0 and np.isfinite(ball[start - 1, 0]) else None
+    last = ball[stop] if stop < t and np.isfinite(ball[stop, 0]) else None
+    if first is None and last is None:
+        return None
+    first = last if first is None else first
+    last = first if last is None else last
+    players = np.concatenate([half.home_xy, half.away_xy], axis=1)
+    out = np.empty((stop - start, 2), dtype=np.float32)
+    position = np.array(first, dtype=np.float32)
+    # the ball reaches the restart spot some way through and waits there with the taker
+    settle = max(_frames(0.3), int(rng.uniform(0.1, 0.7) * (stop - start)))
+    frame = start
+    while frame < stop:
+        remaining = stop - frame
+        row = frame - start
+        if remaining <= settle + 2 * FPS:
+            travel = max(1, min(remaining - settle, 3 * FPS))
+            weight = (np.arange(1, travel + 1) / float(travel))[:, None]
+            out[row:row + travel] = (1 - weight) * position + weight * last
+            waiting = remaining - travel
+            if waiting > 0:
+                sway = _smooth_noise(rng, (waiting, 2), rng.uniform(0.3, 1.6), 1.5 * FPS)
+                sway *= np.minimum(1.0, np.arange(waiting, 0, -1) / float(FPS))[:, None]
+                out[row + travel:] = last + sway
+            break
+        stage = max(1, min(remaining - settle - 2 * FPS, _frames(rng.uniform(0.5, 3.5))))
+        rows = slice(row, row + stage)
+        delta = players[frame] - position
+        with np.errstate(invalid="ignore"):
+            distance = np.sqrt(np.sum(delta * delta, axis=1))
+        seen = np.isfinite(distance)
+        choice = rng.random()
+        if choice < 0.1 or not seen.any():
+            out[rows] = position
+        elif choice < 0.5:
+            # taken along by the nearest player, a little further from his feet than it started
+            slot = int(np.nanargmin(distance))
+            track = players[frame:frame + stage, slot]
+            ok = np.isfinite(track[:, 0])
+            track = np.where(ok[:, None], track, players[frame, slot])
+            fade = np.linspace(1.0, 0.4, stage, dtype=np.float32)[:, None]
+            out[rows] = track + (position - players[frame, slot]) * fade
+        else:
+            # passed to another player, or simply kicked away
+            candidates = np.flatnonzero(seen & (distance > 4.0) & (distance < 40.0))
+            if len(candidates):
+                slot = int(rng.choice(candidates))
+                target = players[min(t - 1, frame + stage), slot]
+                if not np.isfinite(target[0]):
+                    target = players[frame, slot]
+            else:
+                angle = rng.uniform(0.0, 2.0 * np.pi)
+                target = position + rng.uniform(5.0, 20.0) * np.array([np.cos(angle), np.sin(angle)])
+            gap = float(np.sqrt(np.sum((target - position) ** 2)))
+            speed = float(np.clip(np.exp(rng.normal(np.log(4.5), 0.5)), 1.5, 14.0))
+            stage = max(1, min(stage, int(np.ceil(gap / speed * FPS)) + _frames(rng.uniform(0.0, 0.6))))
+            rows = slice(row, row + stage)
+            travel = max(1, min(stage, int(np.ceil(gap / speed * FPS))))
+            weight = np.minimum(np.arange(1, stage + 1) / float(travel), 1.0)[:, None]
+            out[rows] = (1 - weight) * position + weight * target
+        position = out[row + stage - 1].copy()
+        frame += stage
+    edge = np.array([length / 2 + 1.0, width / 2 + 1.0], dtype=np.float32)
+    return np.clip(out, -edge, edge)
+
+
 def _hidden_ball(half, rng, config, ball, height):
-    """Boolean array: frames on which the automatic tracker reports no ball."""
+    """(hidden, held, followed): frames on which the tracker reports no ball; frames of stoppages
+    it follows right through on which a ball that is off the pitch is still reported, at its
+    edge; and the (start, stop) of the stoppages it follows right through."""
     t = half.n_frames
     dead = (half.labels == D) if half.labels is not None else np.zeros(t, dtype=bool)
     hidden = np.zeros(t, dtype=bool)
+    held = np.zeros(t, dtype=bool)
+    followed = []
     stoppages = _runs(dead)
 
     length, width = half.pitch
@@ -194,9 +288,13 @@ def _hidden_ball(half, rng, config, ball, height):
         elif leaves:
             watched = config.dead_watched
         else:
-            watched = config.dead_watched_in if stop - start < 10 * FPS else 0.0
+            watched = config.dead_watched_in if stop - start < 10 * FPS else config.dead_watched
         if rng.random() < watched:
-            continue                                   # this stoppage is tracked throughout
+            # This stoppage is tracked throughout.
+            followed.append((start, stop))
+            if rng.random() < config.hold_at_line:
+                held[start:stop] = True
+            continue
         if leaves:
             lose = start + _frames(rng.normal(config.lose_shift, config.lose_spread))
         else:
@@ -234,7 +332,7 @@ def _hidden_ball(half, rng, config, ball, height):
                 length = np.exp(rng.normal(np.log(config.live_loss_median), 0.9))
                 stop = start + _frames(float(np.clip(length, 0.3, 90.0)))
             hidden[start:min(t, stop)] = True
-    return hidden
+    return hidden, held, followed
 
 
 # -- the simulator -----------------------------------------------------------------------------
@@ -248,6 +346,14 @@ def degrade(half, rng, config):
     ball = half.ball_xy.astype(np.float32).copy()
     height = half.ball_z if half.ball_z is not None else np.zeros(t, dtype=np.float32)
     height = np.nan_to_num(height, nan=0.0)
+    hidden, held, followed = _hidden_ball(half, rng, config, ball, height)
+    # Through a stoppage the tracker follows, the ball is moved about by the players. Corrected
+    # data freezes it or drops it there, so its path is drawn here.
+    for start, stop in followed:
+        path = _wander(half, rng, start, stop, ball)
+        if path is not None:
+            ball[start:stop] = path
+            height[start:stop] = 0.0
     unavailable = ~np.isfinite(ball[:, 0])              # the source itself has no ball here
 
     # -- where the ball is reported: single-camera parallax and a slow error ---------------
@@ -258,12 +364,15 @@ def degrade(half, rng, config):
     reported += _smooth_noise(rng, reported.shape, config.ball_drift, 2 * FPS)
     reported = _moving_average(reported, config.ball_smooth)
 
-    hidden = _hidden_ball(half, rng, config, ball, height) | unavailable
+    hidden |= unavailable
 
-    # A tracker does not report a ball well off the pitch.
+    # A tracker does not report a ball well off the pitch: it loses it, or, where it is
+    # following the ball through a stoppage, keeps reporting it at the edge.
     margin = np.minimum(length / 2 - np.abs(ball[:, 0]), width / 2 - np.abs(ball[:, 1]))
     with np.errstate(invalid="ignore"):
-        hidden |= margin < -config.out_margin
+        hidden |= (margin < -config.out_margin) & ~held
+    edge = np.array([length / 2 + 0.3, width / 2 + 0.3], dtype=np.float32)
+    reported[held] = np.clip(reported[held], -edge, edge)
     reported[hidden] = np.nan
 
     # -- a track that is not the ball -------------------------------------------------------

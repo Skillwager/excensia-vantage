@@ -22,7 +22,7 @@ import os
 
 import numpy as np
 
-from vantage import competition, epts
+from vantage import D, X, competition, epts
 from vantage import _official_metrics as official
 from vantage.labels import behaviour
 
@@ -88,6 +88,29 @@ def main():
                 tolerance, row["precision"], row["recall"], row["median_latency"]))
         print("   alive/dead F1 {:.3f}  team accuracy where both alive {:.3f}".format(
             result["alive_dead_f1"], result["team_acc_both_alive"]))
+
+        # The check is pass or fail. These are questions about whether the pipeline means what
+        # the ground truth means; none of them is a score to push up.
+        graded = truth != X
+        dead = (truth == D) & graded
+        mine_dead = labels == D
+        checks = [
+            ("frames aligned and teams the right way round (teams agree on at least 85% of "
+             "the frames both call live)", result["team_acc_both_alive"] >= 0.85),
+            ("the number of possessions is of the right order (between half and twice the "
+             "true number)", 0.5 * result["n_gt_spells"] <= result["n_pred_spells"]
+             <= 2.0 * result["n_gt_spells"]),
+        ]
+        if seen is not None:
+            for name, mask in (("with a tracked ball", dead & seen), ("with no tracked ball",
+                                                                     dead & ~seen)):
+                if mask.any():
+                    found = float(np.mean(mine_dead[mask]))
+                    checks.append(("dead ball is found {} (at least half of those frames; "
+                                   "found {:.2f})".format(name, found), found >= 0.5))
+        print("\n   pass or fail:")
+        for text, passed in checks:
+            print("   {}  {}".format("PASS" if passed else "FAIL", text))
 
 
 if __name__ == "__main__":

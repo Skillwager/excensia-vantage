@@ -154,6 +154,28 @@ def load_game(game, root):
     return halves
 
 
+def with_loose_ball(half, rng, sigma=0.75):
+    """Move the ball off the player it is drawn on.
+
+    In the sample games the ball sits almost exactly on the player who has it: half the time it
+    is within 0.7 m of the nearest player. In automatic tracking, and in the DFL data, that
+    distance is two to three times as large, because the ball and the players are measured
+    separately. A slow random offset of about a metre brings the sample games into line, so that
+    "who is nearest the ball" is as uncertain in training as it is in a real recording.
+    """
+    ball = half.ball_xy.astype(np.float32).copy()
+    steps = max(2, int(np.ceil(half.n_frames / (1.5 * FPS))) + 2)
+    knots = rng.normal(0.0, sigma, size=(steps, 2))
+    positions = np.linspace(0, steps - 1, half.n_frames)
+    lower = np.floor(positions).astype(int)
+    upper = np.minimum(lower + 1, steps - 1)
+    weight = (positions - lower)[:, None]
+    ball += ((1 - weight) * knots[lower] + weight * knots[upper]).astype(np.float32)
+    return Half(match=half.match, period=half.period, pitch=half.pitch, ball_xy=ball,
+                home_xy=half.home_xy, away_xy=half.away_xy, labels=half.labels,
+                ball_z=half.ball_z, first_frame=half.first_frame, meta=dict(half.meta))
+
+
 def with_dead_ball_track(half, rng):
     """Give the ball a plausible position while play is stopped.
 
@@ -161,9 +183,10 @@ def with_dead_ball_track(half, rng):
     share: a camera can still see a ball rolling out or sitting on the corner spot. Left as it
     is, "no ball" would mean "dead ball" far more reliably here than in any real recording.
     So each stoppage gets a simple, physical stand-in: the ball rolls on from where play stopped
-    and comes to rest, is out of sight while it is fetched, and then sits still on the spot the
-    restart is taken from. Stoppages under three seconds are joined by a straight line. The
-    noise simulator then hides and jitters this track like any other.
+    and comes to rest, is carried at walking or jogging pace to the spot the restart is taken
+    from, and sits there until play resumes. Stoppages under three seconds are joined by a
+    straight line. The noise simulator then hides and jitters this track like any other; it
+    decides whether the tracker sees any of it.
     """
     ball = half.ball_xy.astype(np.float32).copy()
     labels = half.labels
@@ -189,10 +212,26 @@ def with_dead_ball_track(half, rng):
                     velocity = (ball[start - 1] - ball[start - 3]) * (FPS / 2.0)
                 seconds = np.arange(1, roll + 1) / float(FPS)
                 ball[start:start + roll] = before + velocity * (1.0 - np.exp(-seconds))[:, None]
+        roll = roll if before is not None else 0
+        rest = 0
         if after is not None:
             rest = min(int(rng.uniform(1.5, 12.0) * FPS), int(0.6 * length))
             if rest > 0:
                 ball[stop - rest:stop] = after
+        # Between the two the ball is carried from where it stopped to the restart spot. If
+        # there is time to spare it waits first, where it lies, or at the far end.
+        middle = length - roll - rest
+        if before is not None and after is not None and roll > 0 and rest > 0 and middle > 0:
+            origin = ball[start + roll - 1]
+            distance = float(np.sqrt(np.sum((after - origin) ** 2)))
+            carry = int(np.clip(distance / rng.uniform(1.2, 4.0) * FPS, 1, middle))
+            wait = int(rng.uniform(0.0, 1.0) * (middle - carry))
+            first = start + roll
+            ball[first:first + wait] = origin
+            ease = (np.arange(1, carry + 1) / float(carry + 1))[:, None]
+            ease = ease * ease * (3.0 - 2.0 * ease)
+            ball[first + wait:first + wait + carry] = (1 - ease) * origin + ease * after
+            ball[first + wait + carry:stop - rest] = after
     return Half(match=half.match, period=half.period, pitch=half.pitch, ball_xy=ball,
                 home_xy=half.home_xy, away_xy=half.away_xy, labels=half.labels,
                 ball_z=np.zeros(t, dtype=np.float32), first_frame=half.first_frame,

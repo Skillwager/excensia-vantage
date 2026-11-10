@@ -39,6 +39,10 @@ CONDITIONS = {
                            long_miss=0.12, live_loss_rate=1.6, live_loss_median=10.0,
                            until_restart=0.5, false_rate=0.15, player_missing=0.1,
                            player_drift=0.35, blackout=0.5, extra_share=0.2),
+    # stoppages mostly tracked right through, and the ball lost more often in live play
+    "watched": DegradeConfig(dead_hidden=0.3, dead_watched=0.65, dead_watched_in=0.85,
+                             hold_at_line=0.7, early_find=0.4, live_loss_rate=1.4,
+                             live_loss_median=8.0),
     "random1": "random",
     "random2": "random",
 }
@@ -76,6 +80,8 @@ def observed(half, rng, config):
     """What automatic tracking might have recorded of this half."""
     if half.meta.get("source") == "metrica-sample":
         half = metrica_sample.with_dead_ball_track(half, rng)
+        if config is not None:
+            half = metrica_sample.with_loose_ball(half, rng)
     return degrade(half, rng, config)
 
 

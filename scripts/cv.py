@@ -6,6 +6,7 @@ only place model and decoding choices are made.
     python scripts/cv.py prepare                               # build the training tables
     python scripts/cv.py fold --tag v8 --test J03WMX metrica1  # train on the rest, score these
     python scripts/cv.py summary --tag v8                      # one decoding setting for all folds
+    python scripts/cv.py rescore --tag v8 --out-tag v8b        # after a change to the decoding grid
 
 Ten external matches are used: seven from the open DFL dataset and Metrica's three public sample
 games (vantage/dfl.py and vantage/metrica_sample.py give sources and licences). Held-out matches
@@ -31,17 +32,17 @@ GRID_FIELDS = ("cost_team", "cost_to_dead", "cost_from_dead", "boundary_weight",
 
 
 def decode_grid(with_boundary):
+    """The decoding settings that are compared. A stoppage costs the same to enter and to leave."""
     grid = []
-    for cost_team in (0.25, 0.5, 1.0, 2.0):
-        for cost_to_dead in (8.0, 14.0):
-            for cost_from_dead in (8.0, 14.0):
-                for weight in ((0.0, 0.5, 1.0, 2.0, 3.0, 4.0) if with_boundary else (0.0,)):
-                    for min_possession in (0.2, 0.5, 1.0, 2.0):
-                        for min_dead in (0.5, 1.5):
-                            grid.append(decoding.DecodeConfig(
-                                cost_team=cost_team, cost_to_dead=cost_to_dead,
-                                cost_from_dead=cost_from_dead, boundary_weight=weight,
-                                min_possession=min_possession, min_dead=min_dead))
+    for cost_team in (0.5, 2.0):
+        for cost_dead in (10.0, 14.0, 20.0):
+            for weight in ((0.0, 2.0, 4.0, 6.0, 8.0, 12.0) if with_boundary else (0.0,)):
+                for min_possession in (0.0, 0.2, 0.4, 1.0):
+                    for min_dead in (0.5, 1.5):
+                        grid.append(decoding.DecodeConfig(
+                            cost_team=cost_team, cost_to_dead=cost_dead,
+                            cost_from_dead=cost_dead, boundary_weight=weight,
+                            min_possession=min_possession, min_dead=min_dead))
     return grid
 
 
@@ -136,6 +137,50 @@ def fold(args):
                    "results": results}, handle)
 
 
+def rescore(args):
+    """Score the saved predictions of a run again, with the decoding grid as it is now.
+
+    A fold saves the probabilities it predicted for each held-out match and condition, so a
+    change to the grid needs no retraining. The new scores go to their own tag.
+    """
+    source_dir = os.path.join(ROOT, "runs", "cv", args.tag)
+    out_dir = os.path.join(ROOT, "runs", "cv", args.out_tag)
+    os.makedirs(out_dir, exist_ok=True)
+    found = sorted(glob.glob(os.path.join(source_dir, "prob_*.npz")))
+    matches = sorted({os.path.basename(path)[5:-4].rsplit("_", 1)[0] for path in found})
+    for match in matches:
+        if args.matches and match not in args.matches:
+            continue
+        results, grid = {}, None
+        for condition in external.CONDITIONS:
+            path = os.path.join(source_dir, "prob_{}_{}.npz".format(match, condition))
+            if not os.path.isfile(path):
+                continue
+            with np.load(path) as data:
+                count = sum(1 for key in data.files if key.startswith("y"))
+                halves = [(data["y{}".format(i)], data["p{}".format(i)].astype(np.float64),
+                           data["b{}".format(i)].astype(np.float64)
+                           if "b{}".format(i) in data.files else None) for i in range(count)]
+            if args.relabel:
+                # the labels as they are defined now, not as they were when the fold was run
+                truth = [half.labels for half in labelled_halves(match)]
+                halves = [(labels, state, boundary)
+                          for labels, (_, state, boundary) in zip(truth, halves)]
+            grid = decode_grid(halves[0][2] is not None)
+            scores = grid_scores(halves, grid)
+            results["{}|{}".format(condition, match)] = scores
+            best = int(np.argmax([s["spellF1"] for s in scores]))
+            print("{:<8} {:<9} best spellF1 {:.3f} macroF1 {:.3f} poss {}/{}".format(
+                condition, match, scores[best]["spellF1"], scores[best]["macroF1"],
+                scores[best]["n_pred"], scores[best]["n_true"]), flush=True)
+        if results:
+            with open(os.path.join(out_dir, "summary_{}.json".format(match)), "w") as handle:
+                json.dump({"test": [match], "rescored_from": args.tag,
+                           "grid": [{field: getattr(config, field) for field in GRID_FIELDS}
+                                    for config in grid],
+                           "results": results}, handle)
+
+
 def summary(args):
     rows, grid = {}, None
     for path in sorted(glob.glob(os.path.join(ROOT, "runs", "cv", args.tag, "summary_*.json"))):
@@ -212,6 +257,12 @@ def main():
     p.add_argument("--short-seconds", type=float, default=8.0,
                    help="possessions at least this long keep weight one")
     p.add_argument("--seed", type=int, default=0)
+    p = sub.add_parser("rescore")
+    p.add_argument("--tag", required=True, help="the run whose saved predictions are scored")
+    p.add_argument("--out-tag", required=True, help="where the new scores are written")
+    p.add_argument("--relabel", action="store_true",
+                   help="score against the labels as defined now, not the ones saved with the fold")
+    p.add_argument("--matches", nargs="*", default=None)
     p = sub.add_parser("summary")
     p.add_argument("--tag", required=True)
     p.add_argument("--sources", nargs="*", default=None,
@@ -219,7 +270,7 @@ def main():
     p.add_argument("--skip", nargs="*", default=["clean"],
                    help="conditions left out of the choice of decoding setting")
     args = parser.parse_args()
-    {"prepare": prepare, "fold": fold, "summary": summary}[args.command](args)
+    {"prepare": prepare, "fold": fold, "rescore": rescore, "summary": summary}[args.command](args)
 
 
 if __name__ == "__main__":

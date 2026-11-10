@@ -103,7 +103,8 @@ The other scripts are the checks behind statements in the technical document:
 | Script | What it prints |
 |---|---|
 | `match_check.py` | The loader against the figures published in DATA.md. Totals only. |
-| `domain_report.py`, `gap_report.py`, `player_report.py` | Label-free totals of the provided tracking beside the same totals for simulated tracking. They shaped the simulator. |
+| `domain_report.py`, `gap_report.py`, `player_report.py`, `slow_report.py` | Label-free totals of the provided tracking beside the same totals for simulated tracking. They shaped the simulator. |
+| `stoppage_check.py` | Where the ball is untracked through the match and how much of that a file calls dead ball (no labels), and, on the public five minutes, whether dead ball is found with and without a tracked ball. |
 | `tag_check.py` | Label-free totals of Smart Tagging: which tags are fixed-length clips, where tags sit relative to the tracked ball. |
 | `behaviour_report.py` | How the method behaves on held-out external matches, in the totals `pipeline_check.py` prints for a submission file. |
 | `error_report.py` | Which possessions are missed on held-out external matches, by length and by kind of miss. |
