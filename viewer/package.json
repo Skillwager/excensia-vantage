@@ -1,0 +1,32 @@
+{
+  "name": "excensia-vantage-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Excensia Vantage – Possession Lab web viewer",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5273 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 5274 --strictPort",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "shots": "node scripts/shots.mjs",
+    "verify": "node scripts/verify.mjs",
+    "artifact": "node scripts/artifact.mjs"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
+    "@vitejs/plugin-react": "5.2.0",
+    "playwright-core": "1.65.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.8",
+    "vite-plugin-singlefile": "2.3.4",
+    "vitest": "3.2.7"
+  }
+}

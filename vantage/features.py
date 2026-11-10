@@ -29,10 +29,16 @@ PLAYER_VEL_HALFSPAN = 5        # frames either side: velocity over 0.4 s
 PLAYER_MAX_SPEED = 13.0        # m/s; faster means the slot changed person
 BALL_VEL_HALFSPAN = 2          # frames either side: velocity over 0.16 s
 BALL_MAX_SPEED = 45.0          # m/s
+BALL_ACC_CAP = 30.0            # m/s^2
 
 CONTROL_RADIUS = 2.0           # m: a player this close to the ball may be controlling it
 CONTROL_MARGIN = 0.7           # m: and must be this much closer than any opponent
 STILL_SPEED = 0.8              # m/s: below this the ball counts as at rest
+TOUCH_HALFSPAN = 4             # frames either side: velocity change over about a third of a second
+TOUCH_DELTA = 3.0              # m/s: a change of velocity at least this large is a touch
+TOUCH_RADIUS = 3.0             # m: with a player this close
+TOUCH_MARGIN = 0.3             # m: and that much nearer than any opponent
+TOUCH_RUN_CAP = 6.0            # touches in a row are counted up to this
 TIME_CAP = 30.0                # s: "how long since / until" features saturate here
 
 CONTEXT_WINDOWS = (12, 37, 125)        # centred rolling means: about 1 s, 3 s, 10 s wide
@@ -191,6 +197,93 @@ def _ball_to_team(ball_xy, xy, velocity, ball_velocity):
     return out
 
 
+def _touch_features(ball_velocity, seen, nearest_home, nearest_away):
+    """Features built on touches: who struck the ball, how often in a row, and when.
+
+    Distance alone cannot tell a player running beside the ball from one playing it. A touch can:
+    the ball's velocity changes abruptly, and someone is next to it when it does. The challenge's
+    own idea of controlled possession is phrased in touches ("a team completes more than two
+    consecutive passes"), so the run of touches by one team is given to the model directly.
+
+    A touch is a local peak in the change of the ball's velocity over about a third of a second,
+    of at least TOUCH_DELTA, with a player within TOUCH_RADIUS. It belongs to the nearer team;
+    when both are equally near it belongs to neither and breaks no run.
+    """
+    t = len(seen)
+    span = TOUCH_HALFSPAN
+    change = np.full(t, np.nan, dtype=np.float32)
+    if t > 2 * span:
+        delta = ball_velocity[2 * span:] - ball_velocity[:-2 * span]
+        change[span:-span] = np.sqrt(np.sum(delta * delta, axis=1))
+    strength = np.nan_to_num(change, nan=0.0)
+
+    # Local peaks: the largest change within the span either side, above the threshold.
+    peak = strength >= TOUCH_DELTA
+    for offset in range(1, span + 1):
+        peak[offset:] &= strength[offset:] >= strength[:-offset]
+        peak[:-offset] &= strength[:-offset] > strength[offset:]
+
+    home_near = np.where(np.isfinite(nearest_home), nearest_home, np.inf)
+    away_near = np.where(np.isfinite(nearest_away), nearest_away, np.inf)
+    by_home = peak & (home_near < TOUCH_RADIUS) & (home_near + TOUCH_MARGIN < away_near)
+    by_away = peak & (away_near < TOUCH_RADIUS) & (away_near + TOUCH_MARGIN < home_near)
+
+    frames = np.flatnonzero(by_home | by_away)
+    teams = np.where(by_home[frames], 1, -1).astype(np.int8)        # +1 home, -1 away
+
+    out = {}
+    since_home, _ = _frames_since(by_home)
+    since_away, _ = _frames_since(by_away)
+    until_home, _ = _frames_until(by_home)
+    until_away, _ = _frames_until(by_away)
+    out["tch_since_h"] = _seconds(since_home)
+    out["tch_since_a"] = _seconds(since_away)
+    out["tch_until_h"] = _seconds(until_home)
+    out["tch_until_a"] = _seconds(until_away)
+    for window in (75, 250):
+        for name, flag in (("h", by_home), ("a", by_away)):
+            series = flag.astype(np.float32)
+            out["tch_{}_past{}".format(name, window)] = _rolling_mean(series, window, 0) * (window + 1)
+            out["tch_{}_next{}".format(name, window)] = _rolling_mean(series, 0, window) * (window + 1)
+
+    last_team = np.full(t, np.nan, dtype=np.float32)
+    next_team = np.full(t, np.nan, dtype=np.float32)
+    run_last = np.full(t, np.nan, dtype=np.float32)
+    run_next = np.full(t, np.nan, dtype=np.float32)
+    flight = np.full(t, np.nan, dtype=np.float32)
+    if len(frames):
+        # How many touches in a row by the same team, counted up to and from each touch.
+        back = np.ones(len(frames), dtype=np.float32)
+        for i in range(1, len(frames)):
+            if teams[i] == teams[i - 1]:
+                back[i] = back[i - 1] + 1
+        forward = np.ones(len(frames), dtype=np.float32)
+        for i in range(len(frames) - 2, -1, -1):
+            if teams[i] == teams[i + 1]:
+                forward[i] = forward[i + 1] + 1
+
+        index = np.arange(t)
+        previous = np.searchsorted(frames, index, side="right") - 1      # last touch at or before
+        following = previous + 1
+        has_previous = previous >= 0
+        has_following = following < len(frames)
+        last_team[has_previous] = teams[previous[has_previous]]
+        run_last[has_previous] = np.minimum(back[previous[has_previous]], TOUCH_RUN_CAP)
+        next_team[has_following] = teams[following[has_following]]
+        run_next[has_following] = np.minimum(forward[following[has_following]], TOUCH_RUN_CAP)
+        both = has_previous & has_following
+        flight[both] = (frames[following[both]] - frames[previous[both]]) / float(FPS)
+    out["tch_last"] = last_team
+    out["tch_next"] = next_team
+    out["tch_run_last"] = run_last
+    out["tch_run_next"] = run_next
+    out["tch_flight"] = np.minimum(flight, TIME_CAP)
+    # Signed: +n when the last / next n touches in a row are home's, -n when away's.
+    out["tch_run_last_signed"] = last_team * run_last
+    out["tch_run_next_signed"] = next_team * run_next
+    return out
+
+
 # -- the table ---------------------------------------------------------------------------------
 
 def build(half):
@@ -205,7 +298,9 @@ def build(half):
     ball_velocity = _central_velocity(ball, BALL_VEL_HALFSPAN, BALL_MAX_SPEED)
     ball_speed = np.sqrt(np.sum(ball_velocity * ball_velocity, axis=-1))
     ball_acc_vector = _central_velocity(ball_velocity, BALL_VEL_HALFSPAN, 1e9)
-    ball_acc = np.sqrt(np.sum(ball_acc_vector * ball_acc_vector, axis=-1))
+    # Capped: how hard the ball was struck matters less than that it was, and the extreme values
+    # depend on how much a tracker smooths its ball path.
+    ball_acc = np.minimum(np.sqrt(np.sum(ball_acc_vector * ball_acc_vector, axis=-1)), BALL_ACC_CAP)
 
     f = {}
 
@@ -292,6 +387,9 @@ def build(half):
         f["ctl_a_past{}".format(window)] = _rolling_mean(control_away.astype(np.float32), window, 0)
         f["ctl_h_next{}".format(window)] = _rolling_mean(control_home.astype(np.float32), 0, window)
         f["ctl_a_next{}".format(window)] = _rolling_mean(control_away.astype(np.float32), 0, window)
+
+    # -- touches: the moments the ball's motion changes next to a player -------------------------
+    f.update(_touch_features(ball_velocity, seen, home["d1"], away["d1"]))
 
     # -- a ball at rest ------------------------------------------------------------------------
     with np.errstate(invalid="ignore"):

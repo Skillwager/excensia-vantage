@@ -13,18 +13,42 @@ import zlib
 
 import numpy as np
 
-from . import X, dfl, metrica_sample
-from .degrade import degrade, sample_config
+from . import D, FPS, X, dfl, metrica_sample
+from .degrade import DegradeConfig, degrade, sample_config
 from .features import build
-from .labels import CONTROL_SECONDS, change_distances, harmonise
+from .labels import CONTROL_SECONDS, change_distances, harmonise, run_lengths
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# The repository root, where data/ and runs/ live. VANTAGE_ROOT overrides it, so that a frozen
+# copy of the code can be run against the same data while the working copy is being edited.
+ROOT = os.environ.get("VANTAGE_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DFL_DIR = os.path.join(ROOT, "data", "external", "dfl")
 METRICA_DIR = os.path.join(ROOT, "data", "external", "metrica-sample")
 CACHE = os.path.join(ROOT, "data", "cache")
 
 METRICA_MATCHES = tuple("metrica{}".format(game) for game in metrica_sample.GAMES)
 ALL_MATCHES = tuple(dfl.MATCHES) + METRICA_MATCHES
+
+# The simulated recording conditions a held-out match is scored under. None is the corrected
+# tracking as published; "random" draws a setting from the same ranges the training passes use.
+CONDITIONS = {
+    "clean": None,
+    "typical": DegradeConfig(),
+    "easy": DegradeConfig(live_loss_rate=0.2, long_miss=0.0, player_missing=0.03, blackout=0.0,
+                          extra_share=0.03, false_rate=0.0),
+    "harsh": DegradeConfig(dead_hidden=0.7, lose_shift=-1.0, lose_spread=1.5, find_lag=1.5,
+                           long_miss=0.12, live_loss_rate=1.6, live_loss_median=10.0,
+                           until_restart=0.5, false_rate=0.15, player_missing=0.1,
+                           player_drift=0.35, blackout=0.5, extra_share=0.2),
+    "random1": "random",
+    "random2": "random",
+}
+
+
+def condition_half(half, match, name):
+    """One labelled half as it would be recorded under the named condition. Deterministic."""
+    rng = np.random.default_rng(seed_for("eval", match, half.period, name))
+    setting = CONDITIONS[name]
+    return observed(half, rng, sample_config(rng) if setting == "random" else setting)
 
 
 def seed_for(*parts):
@@ -76,26 +100,56 @@ def prepare_match(match, tag, variants, stride):
                 rows = np.arange(phase, version.n_frames, stride)
                 rows = rows[version.labels[rows] != X]
                 np.savez(path, table=table[rows], target=version.labels[rows],
-                         change=change_distances(version.labels)[:, rows], names=np.array(names))
+                         change=change_distances(version.labels)[:, rows],
+                         run=run_lengths(version.labels)[rows], names=np.array(names))
 
 
-def load_training(tag, matches, variants, with_change=False):
-    """(feature names, table, target) concatenated over the given matches.
+def load_training(tag, matches, variants):
+    """The cached training tables of the given matches, as one set of arrays.
 
-    With `with_change`, a fourth value is returned: the (3, N) distances to the nearest change
-    of each kind, which are the boundary model's targets.
+    names    the feature names
+    table    (N, F) float32 features
+    target   (N,) home, away or dead ball
+    change   (3, N) frames to the nearest turnover, stoppage start and restart: the boundary
+             model's targets
+    run      (N,) the length in frames of the possession or stoppage the row belongs to
+    metrica  (N,) True for rows from Metrica's sample games
     """
-    tables, targets, changes, names = [], [], [], None
+    parts = {"table": [], "target": [], "change": [], "run": [], "metrica": []}
+    names = None
     for match in matches:
         for period in (1, 2):
             for variant in range(variants):
                 for view in ("own", "swap"):
                     with np.load(train_table_path(tag, match, period, variant, view)) as data:
-                        tables.append(data["table"])
-                        targets.append(data["target"])
-                        if with_change:
-                            changes.append(data["change"])
+                        for key in ("table", "target", "change", "run"):
+                            parts[key].append(data[key])
+                        parts["metrica"].append(
+                            np.full(len(data["target"]), source_of(match) == "metrica"))
                         names = [str(name) for name in data["names"]]
-    if with_change:
-        return names, np.concatenate(tables), np.concatenate(targets), np.concatenate(changes, axis=1)
-    return names, np.concatenate(tables), np.concatenate(targets)
+    out = {key: np.concatenate(value, axis=1 if key == "change" else 0)
+           for key, value in parts.items()}
+    out["names"] = names
+    return out
+
+
+def row_weights(training, metrica_weight=1.0, short_weight=1.0, short_seconds=8.0):
+    """A weight per training row, or None when every weight would be one.
+
+    `metrica_weight` multiplies the rows from Metrica's sample games. `short_weight` raises the
+    rows of short possessions: the ranking metric counts every possession once, however long it
+    is, while an unweighted fit counts every frame once, so a forty-second possession outweighs
+    a one-second one forty to one. A possession of `short_seconds` or longer keeps weight one; a
+    shorter one gets short_seconds divided by its length, up to `short_weight`. Dead-ball rows
+    keep weight one.
+    """
+    if metrica_weight == 1.0 and short_weight == 1.0:
+        return None
+    weight = np.ones(len(training["target"]), dtype=np.float32)
+    if short_weight != 1.0:
+        seconds = np.maximum(training["run"], 1) / float(FPS)
+        boost = np.clip(short_seconds / seconds, 1.0, short_weight)
+        weight = np.where(training["target"] == D, 1.0, boost).astype(np.float32)
+    if metrica_weight != 1.0:
+        weight = weight * np.where(training["metrica"], metrica_weight, 1.0).astype(np.float32)
+    return weight

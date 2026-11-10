@@ -1,33 +1,34 @@
-"""Bring another provider's possession flags to the challenge's definition of possession.
+"""The external possession labels, and how they relate to the challenge's definition.
 
-The open DFL data marks a change of possession on every touch by the other team: a blocked pass,
-a header won in a duel and a tackle that pokes the ball away each start a new "possession", many
-of them under two seconds long. The challenge is explicit that these do not count
-(CHALLENGE.md, "What does not count as a change of possession"): possession changes only when the
-other team gains *controlled* possession, for which it offers "a player keeps the ball for a few
-seconds" as a proxy, and "in phases where the ball is contested or loose, possession stays with
-the last team that had it".
+The challenge says possession changes when the other team gains *controlled* possession, and
+offers "a player keeps the ball for a few seconds" as a proxy (CHALLENGE.md). It also says that
+the text is not the specification: the ground truth is taken mechanically from corrected
+tracking, frame by frame, with nothing smoothed, and "if your reading of the definition disagrees
+with it, the ground truth is right". The public five minutes settle one question of reading: they
+contain possessions of 0.8 and 1.3 seconds in the middle of live play. So the ground truth has no
+minimum length, and neither do the labels used here. Both external sources are used as given:
 
-`harmonise` applies exactly that to a label sequence: inside each stretch of live play, a spell
-shorter than the control threshold is given back to the team that had the ball before it. The
-first spell after a restart is always kept, because a restart has a clear possessor by rule.
-Dead-ball frames are never changed.
+* Metrica's sample games: the team of the latest on-ball event (vantage/metrica_sample.py).
+  Challenges and deflections are not on-ball events, which is the challenge's own list of touches
+  that do not count.
+* The open DFL data: the provider's per-frame possession flag.
+
+`harmonise` merges spells shorter than a threshold into the possession before them. With the
+threshold at zero it changes nothing. It is kept because scripts/label_stats.py uses it to show
+what a minimum length would do to either source, and because an earlier version of this method
+trained on merged labels (two seconds for Metrica, three for DFL) until the reading above
+corrected it. No number here was fitted to the public five minutes.
 """
 
 import numpy as np
 
 from . import A, D, FPS, H
 
-# The control threshold, per source of labels.
-#
-# "metrica": two seconds, the challenge's own proxy ("keeps the ball for a few seconds") applied
-#   to the provider whose corrected data the ground truth was derived from.
-# "dfl": three seconds. DFL's flag flips on more touches than Metrica's events do, so the same
-#   two seconds would leave DFL with more possessions per minute of live play than Metrica has.
-#   Three seconds brings the two external sources level (about 4.5 possessions per live minute
-#   each; scripts/label_stats.py and scripts/metrica_stats.py print the numbers). This is one
-#   external dataset calibrated against another; the competition match is not involved.
-CONTROL_SECONDS = {"metrica": 2.0, "dfl": 3.0}
+# Minimum length of a possession, per source of labels: none. See the note above.
+CONTROL_SECONDS = {"metrica": 0.0, "dfl": 0.0}
+
+# The thresholds of the earlier, merged labels, kept so that the two can be compared.
+MERGED_SECONDS = {"metrica": 2.0, "dfl": 3.0}
 
 
 def segments(labels):
@@ -41,8 +42,11 @@ def segments(labels):
 
 
 def harmonise(labels, control_seconds, fps=FPS):
-    """Copy of `labels` with uncontrolled spells merged into the possession before them."""
+    """Copy of `labels` with spells shorter than `control_seconds` merged into the possession
+    before them. The first spell after a restart is always kept; dead-ball frames never change."""
     minimum = int(round(control_seconds * fps))
+    if minimum <= 0:
+        return labels.copy()
     out = labels.copy()
     owner = None            # team holding the ball in the current stretch of live play
     for start, stop, code in segments(labels):
@@ -59,6 +63,14 @@ def harmonise(labels, control_seconds, fps=FPS):
     return out
 
 
+def run_lengths(labels):
+    """Per frame, the length in frames of the constant run it belongs to."""
+    out = np.zeros(len(labels), dtype=np.int32)
+    for start, stop, _ in segments(labels):
+        out[start:stop] = stop - start
+    return out
+
+
 def spell_stats(labels, fps=FPS):
     """(count, mean seconds, median seconds, share under 2 s) of the possessions in `labels`."""
     lengths = np.array([stop - start for start, stop, code in segments(labels)
@@ -67,6 +79,62 @@ def spell_stats(labels, fps=FPS):
         return 0, 0.0, 0.0, 0.0
     return len(lengths), float(lengths.mean()), float(np.median(lengths)), float(
         np.mean(lengths < 2.0))
+
+
+def behaviour(halves, fps=FPS):
+    """Totals that describe a labelling without any reference labels.
+
+    `halves` is a list of (labels, seen): the labels of one half and, optionally, a boolean mask
+    of the frames on which the ball was tracked. Ungraded frames (any code other than H, A, D) are
+    left out of every total. The same function describes a decoded external match, its true
+    labels and the competition file, so the three can be laid side by side.
+    """
+    spells, stops = [], []
+    frames = {H: 0, A: 0, D: 0}
+    hidden = hidden_dead = visible = visible_dead = 0
+    with_ball = False
+    for labels, seen in halves:
+        for code in frames:
+            frames[code] += int(np.sum(labels == code))
+        for start, stop, code in segments(labels):
+            if code in (H, A):
+                spells.append((stop - start) / fps)
+            elif code == D:
+                stops.append((stop - start) / fps)
+        if seen is not None:
+            with_ball = True
+            graded = (labels == H) | (labels == A) | (labels == D)
+            dead = labels == D
+            hidden += int(np.sum(graded & ~seen))
+            hidden_dead += int(np.sum(dead & ~seen))
+            visible += int(np.sum(graded & seen))
+            visible_dead += int(np.sum(dead & seen))
+    live = frames[H] + frames[A]
+    graded = live + frames[D]
+    spells, stops = np.array(spells), np.array(stops)
+    out = {
+        "graded": graded,
+        "home": frames[H] / max(graded, 1),
+        "away": frames[A] / max(graded, 1),
+        "dead": frames[D] / max(graded, 1),
+        "home_of_live": frames[H] / max(live, 1),
+        "possessions": len(spells),
+        "per_live_minute": len(spells) / max(live / (60.0 * fps), 1e-9),
+        "possession_mean": float(spells.mean()) if len(spells) else 0.0,
+        "possession_median": float(np.median(spells)) if len(spells) else 0.0,
+        "possession_under3": float(np.mean(spells < 3.0)) if len(spells) else 0.0,
+        "stoppages": len(stops),
+        "stoppage_mean": float(stops.mean()) if len(stops) else 0.0,
+        "stoppage_median": float(np.median(stops)) if len(stops) else 0.0,
+    }
+    if with_ball:
+        out.update({
+            "hidden": hidden / max(graded, 1),
+            "hidden_called_dead": hidden_dead / max(hidden, 1),
+            "visible_called_dead": visible_dead / max(visible, 1),
+            "dead_while_hidden": hidden_dead / max(frames[D], 1),
+        })
+    return out
 
 
 # Kinds of change between consecutive frames, as used by the boundary model.

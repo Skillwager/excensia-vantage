@@ -8,6 +8,12 @@ what produced it (model, settings, package versions, hashes of the inputs and of
 that a second run can be compared with the first.
 
 Nothing about the match is printed beyond totals: label shares and the number of possessions.
+
+    python -m vantage export --data-dir /path/to/data --out runs/match/run.json
+
+writes the same analysis as a run file for the viewer (viewer/): the labels, how sure the model
+was of each possession and on what evidence, and thinned-out tracking. That file is derived
+match data and stays on the machine that has the match.
 """
 
 import argparse
@@ -21,7 +27,8 @@ import numpy as np
 
 from . import A, D, H, LABELS, X, __version__, competition, tagging
 from . import decode as decoding
-from . import epts, model
+from . import epts, model, viewer_export
+from .features import build as build_features
 from .labels import spell_stats
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -57,7 +64,8 @@ def load_model(card_path):
     return boosters["state"], boosters["boundary"], card
 
 
-def run(args):
+def analyse(args):
+    """Label the match. Returns (labels, halves, state probabilities per half, models, card)."""
     state_model, boundary_model, card = load_model(args.model)
     config = decoding.DecodeConfig(**card["decode"])
     paths = competition.tactical_paths(args.data_dir)
@@ -69,7 +77,7 @@ def run(args):
         instances = tagging.load(paths["tagging"])
         vote = tagging.votes(instances, competition.N_FRAMES, home_name, away_name)
 
-    decoded = []
+    decoded, states = [], []
     for half in halves:
         state, boundary = model.predict_half_both(state_model, boundary_model, half,
                                                   card["features"])
@@ -77,8 +85,14 @@ def run(args):
         if vote is not None:
             extra = vote[half.first_frame:half.first_frame + half.n_frames]
         decoded.append((half.first_frame, decoding.decode(state, config, boundary, extra)))
+        states.append(state)
 
-    labels = competition.assemble(decoded)
+    return competition.assemble(decoded), halves, states, state_model, card
+
+
+def run(args):
+    labels, _, _, _, card = analyse(args)
+    paths = competition.tactical_paths(args.data_dir)
     competition.write_submission(args.out, labels)
 
     graded = labels != X
@@ -110,6 +124,31 @@ def run(args):
     return 0
 
 
+def export(args):
+    labels, halves, states, state_model, card = analyse(args)
+    paths = competition.tactical_paths(args.data_dir)
+    home_name, away_name = epts.read_team_names(paths["meta"])
+    evidence = None
+    if not args.no_evidence:
+        evidence = []
+        for half in halves:
+            names, table = build_features(half)
+            codes = labels[half.first_frame:half.first_frame + half.n_frames]
+            evidence.append(viewer_export.evidence_shares(
+                state_model, table, names, np.minimum(codes, 2).astype(np.int64),
+                every=args.every))
+    run_file = viewer_export.build("{} v {}".format(home_name, away_name), home_name, away_name,
+                                   labels, halves, states, evidence, every=args.every)
+    folder = os.path.dirname(os.path.abspath(args.out))
+    os.makedirs(folder, exist_ok=True)
+    viewer_export.write(args.out, run_file)
+    print("wrote {}  ({:.1f} MB)".format(args.out, os.path.getsize(args.out) / 1e6))
+    for key, value in viewer_export.summary(run_file).items():
+        print("  {}: {}".format(key, value))
+    print("  this file holds match tracking: keep it on this machine")
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="vantage", description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -119,8 +158,17 @@ def main(argv=None):
     runner.add_argument("--model", default=DEFAULT_MODEL)
     runner.add_argument("--no-tagging", action="store_true",
                         help="ignore the Smart Tagging file (tracking only)")
+    exporter = sub.add_parser("export", help="write a run file for the viewer")
+    exporter.add_argument("--data-dir", required=True, help="folder containing tactical/")
+    exporter.add_argument("--out", required=True, help="where to write the run file (.json)")
+    exporter.add_argument("--model", default=DEFAULT_MODEL)
+    exporter.add_argument("--no-tagging", action="store_true")
+    exporter.add_argument("--every", type=int, default=5,
+                          help="keep one tracking sample in this many frames")
+    exporter.add_argument("--no-evidence", action="store_true",
+                          help="leave out the per-possession evidence shares (faster)")
     args = parser.parse_args(argv)
-    return {"run": run}[args.command](args)
+    return {"run": run, "export": export}[args.command](args)
 
 
 if __name__ == "__main__":

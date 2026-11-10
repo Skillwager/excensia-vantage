@@ -8,7 +8,8 @@ it (`A`) or the ball is dead (`D`). It reads the provided automatic tracking and
 nothing else, and everything it has learned comes from **other** matches.
 
 - [docs/TECHNICAL_DOCUMENT.md](docs/TECHNICAL_DOCUMENT.md): the method, the data, the limits.
-- `viewer/`: a browser viewer for the result (possession timeline, team shape, evidence).
+- `viewer/`: a browser viewer for a result (possession timeline, team shape, the evidence behind
+  each call). It ships with a simulated match and contains no match data.
 
 ## Reproduce the submitted file
 
@@ -22,23 +23,34 @@ python -m venv .venv
 .venv/bin/python -m vantage run --data-dir /path/to/data --out excensia.csv
 ```
 
-Python 3.12 (`.python-version` has the exact one used). The three pinned packages in
-`requirements.txt` are the whole runtime: numpy, scipy and lightgbm. The run takes about two
-minutes on a laptop, uses no GPU and no network, and is deterministic: the trained model is a
-fixed file in `models/`, and its prediction is a sum of constants chosen by threshold tests.
+Python 3.12 (`.python-version` has the exact one used). The pinned packages in `requirements.txt`
+are the whole runtime: numpy, scipy, lightgbm and lightgbm's one dependency. On Linux, LightGBM
+also needs the OpenMP runtime, which a minimal image may lack (`apt-get install libgomp1`); on
+macOS, `brew install libomp`.
+
+The run takes about a minute on a laptop, uses no GPU and no network, and is deterministic. The
+trained models are fixed files in `models/`, the features use only exact arithmetic (no
+transcendental functions, no linear-algebra library), and a prediction is a sum of constants chosen
+by threshold tests. The same file, byte for byte, came out on Windows 11 and on Ubuntu 24.04.
 
 The command prints the SHA-256 of the file it wrote and stores it in `excensia.receipt.json`
-together with the hashes of the inputs, the model and the package versions. The submitted file is
+together with the hashes of the inputs, the models and the package versions. The submitted file is
 
 ```
 sha256  <filled in at submission>
 ```
 
-Check any file before sending it, with the organisers' own validator:
+Check any file before sending it:
 
 ```bash
 python /path/to/more-than-a-hack-2027/evaluation/validate_submission.py excensia.csv
+python scripts/pipeline_check.py excensia.csv --data-dir /path/to/data \
+    --official /path/to/more-than-a-hack-2027
 ```
+
+The first is the organisers' own validator. The second repeats it, prints the file's label-free
+totals, and reads the public five minutes once as a pipeline check (frames aligned, home and away
+the right way round). It chooses nothing.
 
 ## What is in here
 
@@ -46,16 +58,21 @@ python /path/to/more-than-a-hack-2027/evaluation/validate_submission.py excensia
 vantage/
   epts.py            reader for the FIFA EPTS tracking format (follows the layout blocks)
   competition.py     the match: published frame ranges, loading, the submission writer
-  features.py        per-frame feature table: ball, gaps in the ball, who is near it, team shape
-  model.py           the frame classifier (gradient-boosted trees), scored in both mirror views
+  features.py        per-frame feature table: ball, gaps in the ball, touches, team shape
+  model.py           two gradient-boosted tree models, scored in both mirror views
   decode.py          Viterbi decoding into whole possessions, with minimum lengths
   tagging.py         Smart Tagging as bounded votes
   degrade.py         simulator that makes corrected tracking look like automatic tracking
-  labels.py          brings other providers' possession flags to the challenge's definition
+  labels.py          the external possession labels, and the challenge's definition
   dfl.py, metrica_sample.py, external.py     the ten external matches
   evaluate.py, _official_metrics.py          scoring with the organisers' own metric code
-models/              the trained model and its card (features, decoding settings, provenance)
-scripts/             fetch the external data, cross-validate, train, compare domains
+  viewer_export.py   writes a run for the viewer: labels, confidence, evidence, tracking
+  cli.py             `python -m vantage run` and `python -m vantage export`
+models/
+  vantage_state.txt      frame classifier: home, away or dead ball
+  vantage_boundary.txt   boundary model: turnover, stoppage or restart happening here
+  vantage.json           the card: features, decoding settings, provenance, file hashes
+scripts/             fetch the external data, cross-validate, train, compare domains (below)
 tests/               checks on generated data only
 viewer/              the browser viewer
 ```
@@ -69,13 +86,30 @@ pip install -r requirements-dev.txt
 python scripts/fetch_external.py                       # open DFL dataset, 2.6 GB, CC BY 4.0
 git clone https://github.com/metrica-sports/sample-data data/external/metrica-sample
 python scripts/cv.py prepare                           # simulate automatic tracking, build tables
-python scripts/cv.py fold --tag v3 --test J03WMX metrica1    # ...one command per fold
-python scripts/cv_summary.py --tag v3                  # picks the decoding settings
-python scripts/train_final.py --decode '<json printed by cv_summary>'
+python scripts/cv.py fold --tag v7 --test J03WMX metrica1
+python scripts/cv.py fold --tag v7 --test J03WN1 metrica2
+python scripts/cv.py fold --tag v7 --test J03WOH metrica3
+python scripts/cv.py fold --tag v7 --test J03WOY J03WPY
+python scripts/cv.py fold --tag v7 --test J03WQQ J03WR9
+python scripts/cv.py summary --tag v7                  # one decoding setting for all folds
+python scripts/train_final.py --decode '<json printed by the summary>'
 ```
 
-Every random draw is seeded from the match name, so the tables and the model can be rebuilt.
-Retraining is not needed to reproduce the submission: the model that produced it is committed.
+Every random draw is seeded from the match name, so the tables and the models can be rebuilt.
+Retraining is not needed to reproduce the submission: the models that produced it are committed.
+
+The other scripts are the checks behind statements in the technical document:
+
+| Script | What it prints |
+|---|---|
+| `match_check.py` | The loader against the figures published in DATA.md. Totals only. |
+| `domain_report.py`, `gap_report.py`, `player_report.py` | Label-free totals of the provided tracking beside the same totals for simulated tracking. They shaped the simulator. |
+| `tag_check.py` | Label-free totals of Smart Tagging: which tags are fixed-length clips, where tags sit relative to the tracked ball. |
+| `behaviour_report.py` | How the method behaves on held-out external matches, in the totals `pipeline_check.py` prints for a submission file. |
+| `error_report.py` | Which possessions are missed on held-out external matches, by length and by kind of miss. |
+| `label_stats.py`, `metrica_stats.py`, `dfl_summary.py` | The external labels: possessions per minute, lengths, and what a minimum length would do to them. |
+| `export_external.py` | A run file for the viewer from one of the open matches, so the whole path can be seen on open data. |
+| `adversarial.py` | Whether a classifier can tell simulated from provided tracking, and on which features. |
 
 ## Tests
 

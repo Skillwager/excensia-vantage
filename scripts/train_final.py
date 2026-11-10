@@ -1,11 +1,12 @@
-"""Train the model that is shipped in models/, on all ten external matches.
+"""Train the models that are shipped in models/, on all ten external matches.
 
-    python scripts/cv.py prepare            # once: builds the cached training tables
-    python scripts/train_final.py           # writes models/vantage.txt and models/vantage.json
+    python scripts/cv.py prepare                    # once: builds the cached training tables
+    python scripts/train_final.py --decode '<json>' # writes models/vantage_state.txt,
+                                                    # vantage_boundary.txt and vantage.json
 
 The competition match is not read here or anywhere else during training. The decoding settings
-written into the model card are the ones chosen by cross-validation (scripts/cv.py); pass them
-with --decode once that has been run.
+written into the model card are the ones chosen by cross-validation (scripts/cv.py summary);
+pass them with --decode.
 """
 
 import argparse
@@ -35,37 +36,60 @@ def save(booster, path):
             "bytes": len(content)}
 
 
+def write_card(path, card):
+    with open(path, "w", newline="\n") as handle:
+        json.dump(card, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--data-tag", default="v4")
+    parser.add_argument("--data-tag", default="v8")
     parser.add_argument("--variants", type=int, default=3)
     parser.add_argument("--rounds", type=int, default=model.ROUNDS)
     parser.add_argument("--boundary-rounds", type=int, default=300)
     parser.add_argument("--no-boundary", action="store_true")
+    parser.add_argument("--metrica-weight", type=float, default=1.0)
+    parser.add_argument("--short-weight", type=float, default=1.0)
+    parser.add_argument("--short-seconds", type=float, default=8.0)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--decode", default="{}", help="JSON of DecodeConfig fields")
+    parser.add_argument("--card-only", action="store_true",
+                        help="rewrite the decoding settings of an existing model card, no training")
     parser.add_argument("--out", default=os.path.join(ROOT, "models", "vantage"))
     args = parser.parse_args()
 
-    names, table, target, change = external.load_training(
-        args.data_tag, external.ALL_MATCHES, args.variants, with_change=True)
+    config = decoding.DecodeConfig(**json.loads(args.decode))
+    decode = {key: getattr(config, key) for key in config.__dataclass_fields__}
+    if args.card_only:
+        with open(args.out + ".json") as handle:
+            card = json.load(handle)
+        card["decode"] = decode
+        write_card(args.out + ".json", card)
+        print("decoding settings rewritten in " + args.out + ".json")
+        return
+
+    training = external.load_training(args.data_tag, external.ALL_MATCHES, args.variants)
+    names, table, target = training["names"], training["table"], training["target"]
     print("training on {} rows x {} features from {} matches".format(
         len(table), len(names), len(external.ALL_MATCHES)), flush=True)
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
-    models = {"state": save(model.fit(table, target, names, seed=args.seed, rounds=args.rounds),
-                            args.out + "_state.txt"), "boundary": None}
+    state = model.fit(table, target, names, seed=args.seed, rounds=args.rounds,
+                      weight=external.row_weights(training, args.metrica_weight, args.short_weight,
+                                                  args.short_seconds))
+    models = {"state": save(state, args.out + "_state.txt"), "boundary": None}
     if not args.no_boundary:
-        models["boundary"] = save(
-            model.fit_boundary(table, change, names, seed=args.seed, rounds=args.boundary_rounds),
-            args.out + "_boundary.txt")
+        boundary = model.fit_boundary(table, training["change"], names, seed=args.seed,
+                                      rounds=args.boundary_rounds,
+                                      weight=external.row_weights(training, args.metrica_weight))
+        models["boundary"] = save(boundary, args.out + "_boundary.txt")
 
-    config = decoding.DecodeConfig(**json.loads(args.decode))
     card = {
         "package": __version__,
         "features": names,
         "models": models,
-        "decode": {key: getattr(config, key) for key in config.__dataclass_fields__},
+        "decode": decode,
         "training": {
             "matches": list(external.ALL_MATCHES),
             "rows": int(len(table)),
@@ -76,6 +100,9 @@ def main():
             "boundary_rounds": args.boundary_rounds,
             "boundary_width": model.BOUNDARY_WIDTH,
             "seed": args.seed,
+            "metrica_weight": args.metrica_weight,
+            "short_weight": args.short_weight,
+            "short_seconds": args.short_seconds,
             "params": model.PARAMS,
             "control_seconds": CONTROL_SECONDS,
             "python": platform.python_version(),
@@ -83,9 +110,7 @@ def main():
             "lightgbm": lightgbm.__version__,
         },
     }
-    with open(args.out + ".json", "w", newline="\n") as handle:
-        json.dump(card, handle, indent=2, sort_keys=True)
-        handle.write("\n")
+    write_card(args.out + ".json", card)
     for role, entry in models.items():
         if entry:
             print("wrote {} model {} ({} bytes, sha256 {})".format(

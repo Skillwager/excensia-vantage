@@ -239,6 +239,37 @@ def test_features_are_mirror_images_under_a_team_swap():
         assert np.allclose(left, right, equal_nan=True, atol=1e-4), own
     assert np.allclose(table[:, names.index("b_ddiff")], -swapped[:, names.index("b_ddiff")],
                        equal_nan=True, atol=1e-4)
+    for own, other in (("tch_since_h", "tch_since_a"), ("tch_h_past75", "tch_a_past75")):
+        assert np.allclose(table[:, names.index(own)], swapped[:, names.index(other)],
+                           equal_nan=True, atol=1e-4), own
+    for signed in ("tch_last", "tch_run_next_signed"):
+        assert np.allclose(table[:, names.index(signed)], -swapped[:, names.index(signed)],
+                           equal_nan=True, atol=1e-4), signed
+
+
+def test_touches_are_found_where_the_ball_changes_direction_next_to_a_player():
+    frames = 300
+    ball = np.zeros((frames, 2), dtype=np.float32)
+    # Rolls right at 8 m/s, is turned back at frame 100 by a home player, and again at frame 200
+    # by an away player.
+    x = 0.0
+    for index in range(frames):
+        direction = 1.0 if index < 100 or index >= 200 else -1.0
+        x += direction * 8.0 / 25.0
+        ball[index] = (x, 0.0)
+    home = np.full((frames, 2, 2), 40.0, dtype=np.float32)
+    away = np.full((frames, 2, 2), -40.0, dtype=np.float32)
+    home[:, 0] = ball[100] + np.array([0.5, 0.0])
+    away[:, 0] = ball[200] + np.array([-0.5, 0.0])
+    half = Half(match="toy", period=1, pitch=(105.0, 68.0), ball_xy=ball, home_xy=home,
+                away_xy=away)
+    names, table = build(half)
+    column = {name: table[:, index] for index, name in enumerate(names)}
+    assert abs(int(np.flatnonzero(column["tch_since_h"] == 0)[0]) - 100) <= 2
+    assert abs(int(np.flatnonzero(column["tch_since_a"] == 0)[0]) - 200) <= 2
+    assert column["tch_last"][150] == 1 and column["tch_next"][150] == -1
+    assert column["tch_last"][250] == -1 and np.isnan(column["tch_next"][250])
+    assert column["tch_flight"][150] == pytest.approx(4.0, abs=0.2)
 
 
 def test_features_do_not_depend_on_slot_order():

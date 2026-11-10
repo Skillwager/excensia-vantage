@@ -45,7 +45,7 @@ BOUNDARY_WIDTH = 6           # frames either side of a change that count as "at 
 BOUNDARY_PARAMS = {"num_class": 4, "min_data_in_leaf": 150}
 
 
-def fit_boundary(table, change, names, seed=0, rounds=ROUNDS, width=BOUNDARY_WIDTH):
+def fit_boundary(table, change, names, seed=0, rounds=ROUNDS, width=BOUNDARY_WIDTH, weight=None):
     """The boundary model: is a turnover, a stoppage or a restart happening right here?
 
     Same features, different question. The frame classifier is dominated by the long middles of
@@ -54,7 +54,7 @@ def fit_boundary(table, change, names, seed=0, rounds=ROUNDS, width=BOUNDARY_WID
     from .labels import change_classes
 
     return fit(table, change_classes(change, width), names, seed=seed, rounds=rounds,
-               params=BOUNDARY_PARAMS)
+               params=BOUNDARY_PARAMS, weight=weight)
 
 
 def predict_table(booster, table):

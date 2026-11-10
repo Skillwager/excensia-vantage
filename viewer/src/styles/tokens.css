@@ -1,0 +1,104 @@
+/*
+ * Excensia "Night": the palette, type ramp, shape and motion of the Excensia app (its src/styles.css),
+ * as custom properties. Canvases cannot read these, so src/render/palette.ts mirrors the colours.
+ */
+:root {
+  /* night only: form controls and scrollbars follow, whatever the page is hosted in */
+  color-scheme: dark;
+
+  /* the ground */
+  --pitch: #0f1113;
+  --pitch-mid: #1e2125;
+  --pitch-lift: #26292e;
+
+  /* brand lime: action and the live moment only */
+  --lime: #c6ff00;
+  --lime-fg: #0f1113;
+
+  /* text */
+  --ink: #f5f5f2;
+  --mist: #a9afab;
+  --dim: #7a817c;
+
+  /* glass and hairlines */
+  --glass: rgb(25 28 32 / 0.68);
+  --glass-strong: rgb(32 35 39 / 0.82);
+  --line: rgb(255 255 255 / 0.08);
+  --line-strong: rgb(255 255 255 / 0.14);
+
+  /* the two teams, and the ball out of play */
+  --home: #35c8f5;
+  --away: #ff3db4;
+  --dead: #8b9299;
+
+  /* needs attention; went wrong */
+  --ember: #ffb35c;
+  --coral: #d97868;
+
+  /* type */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Exo 2", "Barlow Condensed", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --text-label: 0.6875rem;
+  --text-label-lh: 0.875rem;
+  --text-caption: 0.75rem;
+  --text-caption-lh: 1rem;
+  --text-small: 0.8125rem;
+  --text-small-lh: 1.125rem;
+  --text-body: 0.875rem;
+  --text-body-lh: 1.25rem;
+  --text-lead: 1rem;
+  --text-lead-lh: 1.375rem;
+  --text-title: 1.125rem;
+  --text-title-lh: 1.5rem;
+  --text-section: 1.375rem;
+  --text-section-lh: 1.625rem;
+  --text-figure: 1.875rem;
+
+  /* shape */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+
+  /* the smoked card of the app: a soft highlight from the top left and a lit top edge */
+  --card-image: linear-gradient(125deg, rgb(181 201 218 / 0.06), transparent 48%, rgb(181 201 218 / 0.022));
+  --card-lip: inset 0 1px 0 rgb(255 255 255 / 0.045);
+  --shadow-border: 0 0 0 1px rgb(255 255 255 / 0.08);
+  --scrim: rgb(0 0 0 / 0.5);
+
+  /* motion */
+  --motion-quick: 160ms;
+  --motion-base: 240ms;
+  --motion-sheet: 380ms;
+  --motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-spring: cubic-bezier(0.2, 0.9, 0.25, 1.08);
+
+  /* the page gutter: 16px, or more where a phone's system bar sits at the side */
+  --gutter: max(16px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+  --gap: 16px;
+
+  /* the height of the screen that is ours: a phone app keeps strips at the top and bottom */
+  --screen: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 64rem) {
+  :root {
+    --text-body: 0.9375rem;
+    --text-body-lh: 1.375rem;
+    --text-lead: 1.0625rem;
+    --text-lead-lh: 1.5rem;
+    --text-title: 1.25rem;
+    --text-title-lh: 1.625rem;
+    --text-section: 1.625rem;
+    --text-section-lh: 1.875rem;
+    --text-figure: 2.125rem;
+  }
+}
+
+@media (max-width: 900px) {
+  :root {
+    --gap: 12px;
+  }
+}

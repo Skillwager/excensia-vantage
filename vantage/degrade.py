@@ -52,7 +52,7 @@ class DegradeConfig:
     lose_spread: float = 0.8          # s
     early_find: float = 0.05          # chance the ball is picked up again before the restart
     early_find_mean: float = 2.0      # s before the restart, when it is
-    find_lag: float = 0.6             # s after the restart before the moving ball is picked up
+    find_lag: float = 0.3             # s after the restart before the moving ball is picked up
     long_miss: float = 0.05           # chance the restart is missed and the ball found much later
     # -- ball: lost in live play -----------------------------------------------------------
     live_loss_rate: float = 0.8       # losses per minute of live play
@@ -64,17 +64,19 @@ class DegradeConfig:
     # -- ball: measurement -----------------------------------------------------------------
     out_margin: float = 1.5           # m: a ball further than this off the pitch is not reported
     ball_drift: float = 0.15          # m, slow error
+    ball_smooth: int = 5              # frames: the tracker's own smoothing of the ball's path
     parallax: float = 0.1             # 0 = true ground position, 1 = full single-camera parallax
     camera_x: float = 0.0
     camera_back: float = 30.0         # m behind the near touchline
     camera_height: float = 18.0
     false_rate: float = 0.05          # false ball tracks per minute while the ball is hidden
     # -- players ---------------------------------------------------------------------------
-    player_missing: float = 0.06      # fraction of player-frames with no detection
+    player_missing: float = 0.03      # fraction of player-frames with no detection
+    w_player_crowd: float = 1.0       # how much standing close to others raises that
     player_gap_mean: float = 8.0      # s, mean length of a player's absence
     player_blips: float = 0.3         # brief losses (under 2 s) per player-minute
     player_drift: float = 0.2         # m, slow error
-    blackout: float = 0.2             # chance a long stoppage loses most players for a while
+    blackout: float = 0.35            # chance a long stoppage loses many players for a while
     extra_share: float = 0.1          # share of the half with an extra body on some team
     wrong_team_rate: float = 0.0005   # per player-second
 
@@ -90,7 +92,7 @@ def sample_config(rng):
         lose_spread=float(rng.uniform(0.3, 2.0)),
         early_find=float(rng.uniform(0.0, 0.15)),
         early_find_mean=float(rng.uniform(0.5, 4.0)),
-        find_lag=float(rng.uniform(0.1, 2.0)),
+        find_lag=float(rng.uniform(0.05, 1.0)),
         long_miss=float(rng.uniform(0.0, 0.15)),
         live_loss_rate=float(np.exp(rng.uniform(np.log(0.1), np.log(2.0)))),
         live_loss_median=float(rng.uniform(2.5, 14.0)),
@@ -100,16 +102,18 @@ def sample_config(rng):
         w_crowd=float(rng.uniform(0.0, 1.2)),
         out_margin=float(rng.uniform(0.5, 4.0)),
         ball_drift=float(rng.uniform(0.0, 0.35)),
+        ball_smooth=int(rng.choice((3, 5, 7, 9))),
         parallax=float(rng.uniform(0.0, 0.3)),
         camera_x=float(rng.uniform(-12.0, 12.0)),
         camera_back=float(rng.uniform(15.0, 45.0)),
         camera_height=float(rng.uniform(10.0, 28.0)),
         false_rate=float(rng.uniform(0.0, 0.2)),
-        player_missing=float(rng.uniform(0.02, 0.10)),
+        player_missing=float(rng.uniform(0.01, 0.06)),
+        w_player_crowd=float(rng.uniform(0.0, 2.0)),
         player_gap_mean=float(rng.uniform(3.0, 20.0)),
         player_blips=float(rng.uniform(0.0, 1.0)),
         player_drift=float(rng.uniform(0.0, 0.4)),
-        blackout=float(rng.uniform(0.0, 0.6)),
+        blackout=float(rng.uniform(0.0, 0.7)),
         extra_share=float(rng.uniform(0.0, 0.25)),
         wrong_team_rate=float(rng.uniform(0.0, 0.001)),
     )
@@ -134,6 +138,24 @@ def _smooth_noise(rng, shape, sigma, timescale_frames):
     upper = np.minimum(lower + 1, steps - 1)
     weight = (positions - lower).reshape((-1,) + (1,) * (len(shape) - 1))
     return ((1 - weight) * knots[lower] + weight * knots[upper]).astype(np.float32)
+
+
+def _moving_average(xy, window):
+    """Centred moving average along axis 0 that ignores NaN and keeps NaN where the centre is."""
+    if window <= 1:
+        return xy
+    half = window // 2
+    finite = np.isfinite(xy[:, 0])
+    filled = np.where(finite[:, None], xy, 0.0).astype(np.float64)
+    total = np.concatenate((np.zeros((1, xy.shape[1])), np.cumsum(filled, axis=0)))
+    count = np.concatenate(([0], np.cumsum(finite)))
+    index = np.arange(len(xy))
+    low = np.maximum(0, index - half)
+    high = np.minimum(len(xy), index + half + 1)
+    n = (count[high] - count[low]).astype(np.float64)
+    out = (total[high] - total[low]) / np.maximum(n, 1.0)[:, None]
+    out[~finite] = np.nan
+    return out.astype(np.float32)
 
 
 def _neighbours_within(point_xy, home_xy, away_xy, radius):
@@ -234,6 +256,7 @@ def degrade(half, rng, config):
     stretch = config.parallax * safe_height / (config.camera_height - safe_height)
     reported = ball + stretch[:, None] * (ball - camera)
     reported += _smooth_noise(rng, reported.shape, config.ball_drift, 2 * FPS)
+    reported = _moving_average(reported, config.ball_smooth)
 
     hidden = _hidden_ball(half, rng, config, ball, height) | unavailable
 
@@ -259,32 +282,37 @@ def degrade(half, rng, config):
 
     # -- players ---------------------------------------------------------------------------
     dead = (half.labels == D) if half.labels is not None else np.zeros(t, dtype=bool)
-    blackouts = np.zeros(t, dtype=bool)
+    # During a long stoppage the camera may leave the pitch: many players vanish together.
+    blackout_spans = []
     for start, stop in _runs(dead):
-        if stop - start > 20 * FPS and rng.random() < config.blackout:
-            a = start + int(rng.uniform(0.1, 0.5) * (stop - start))
-            b = a + int(rng.uniform(0.2, 0.5) * (stop - start))
-            blackouts[a:b] = True
+        if stop - start > 15 * FPS and rng.random() < config.blackout:
+            a = start + int(rng.uniform(0.05, 0.5) * (stop - start))
+            b = a + int(rng.uniform(0.2, 0.6) * (stop - start))
+            blackout_spans.append((a, b, float(rng.uniform(0.3, 1.0))))
 
     teams = []
-    for own in (half.home_xy, half.away_xy):
+    for own, other in ((half.home_xy, half.away_xy), (half.away_xy, half.home_xy)):
         xy = own.astype(np.float32).copy()
         xy += _smooth_noise(rng, xy.shape, config.player_drift, 4 * FPS)
         for slot in range(xy.shape[1]):
             on_pitch = np.isfinite(xy[:, slot, 0])
             if not on_pitch.any():
                 continue
+            # A player is lost where others stand close (occlusion), rarely when alone.
+            close = _neighbours_within(own[:, slot], own, other, 2.0) - 1
+            risk = np.where(on_pitch, np.exp(config.w_player_crowd * np.clip(close, 0, 3)), 0.0)
             rate = config.player_missing / max(config.player_gap_mean, 1e-6)   # losses per second
             for _ in range(int(rng.poisson(rate * on_pitch.sum() / FPS))):
-                start = int(rng.integers(0, t))
+                start = int(rng.choice(t, p=risk / risk.sum()))
                 stop = start + _frames(rng.exponential(config.player_gap_mean))
                 xy[start:stop, slot] = np.nan
             minutes = on_pitch.sum() / (FPS * 60.0)
             for _ in range(int(rng.poisson(config.player_blips * minutes))):
                 start = int(rng.integers(0, t))
                 xy[start:start + _frames(rng.uniform(0.2, 2.0)), slot] = np.nan
-            if blackouts.any() and rng.random() < 0.7:
-                xy[blackouts, slot] = np.nan
+            for a, b, share in blackout_spans:
+                if rng.random() < share:
+                    xy[a:b, slot] = np.nan
         teams.append(xy)
     home_xy, away_xy = teams
 
