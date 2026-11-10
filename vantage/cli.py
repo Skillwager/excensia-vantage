@@ -25,7 +25,7 @@ from . import epts, model
 from .labels import spell_stats
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_MODEL = os.path.join(os.path.dirname(HERE), "models", "vantage.txt")
+DEFAULT_MODEL = os.path.join(os.path.dirname(HERE), "models", "vantage.json")
 
 
 def sha256(path):
@@ -36,37 +36,47 @@ def sha256(path):
     return digest.hexdigest()
 
 
-def load_model(path):
+def load_model(card_path):
+    """(state model, boundary model or None, card). The card names the model files beside it and
+    their hashes; a file that does not match its hash is refused."""
     import lightgbm
 
-    booster = lightgbm.Booster(model_file=path)
-    with open(os.path.splitext(path)[0] + ".json") as handle:
+    with open(card_path) as handle:
         card = json.load(handle)
-    return booster, card
+    folder = os.path.dirname(os.path.abspath(card_path))
+    boosters = {}
+    for role in ("state", "boundary"):
+        entry = card["models"].get(role)
+        if entry is None:
+            boosters[role] = None
+            continue
+        path = os.path.join(folder, entry["file"])
+        if sha256(path) != entry["sha256"]:
+            raise ValueError("{} does not match the hash in the model card".format(path))
+        boosters[role] = lightgbm.Booster(model_file=path)
+    return boosters["state"], boosters["boundary"], card
 
 
 def run(args):
-    booster, card = load_model(args.model)
+    state_model, boundary_model, card = load_model(args.model)
     config = decoding.DecodeConfig(**card["decode"])
     paths = competition.tactical_paths(args.data_dir)
 
     halves = competition.load_halves(args.data_dir)
     vote = None
-    home_name = away_name = ""
     if not args.no_tagging:
-        meta = epts.read_team_names(paths["meta"])
-        home_name, away_name = meta
+        home_name, away_name = epts.read_team_names(paths["meta"])
         instances = tagging.load(paths["tagging"])
         vote = tagging.votes(instances, competition.N_FRAMES, home_name, away_name)
 
     decoded = []
     for half in halves:
-        probability = model.predict_half(booster, half, card["features"])
-        log_prob = np.log(np.clip(probability, config.floor, 1.0))
+        state, boundary = model.predict_half_both(state_model, boundary_model, half,
+                                                  card["features"])
+        extra = None
         if vote is not None:
-            log_prob = log_prob + vote[half.first_frame:half.first_frame + half.n_frames]
-        path = decoding.enforce_minimums(decoding.viterbi(log_prob, config), config)
-        decoded.append((half.first_frame, path))
+            extra = vote[half.first_frame:half.first_frame + half.n_frames]
+        decoded.append((half.first_frame, decoding.decode(state, config, boundary, extra)))
 
     labels = competition.assemble(decoded)
     competition.write_submission(args.out, labels)
@@ -79,7 +89,8 @@ def run(args):
         "python": platform.python_version(),
         "numpy": np.__version__,
         "lightgbm": __import__("lightgbm").__version__,
-        "model": {"file": os.path.basename(args.model), "sha256": sha256(args.model)},
+        "model": {"card": os.path.basename(args.model), "card_sha256": sha256(args.model),
+                  "files": card["models"]},
         "decode": card["decode"],
         "tagging": not args.no_tagging,
         "inputs": {name: sha256(paths[name]) for name in ("meta", "raw", "tagging")},

@@ -194,25 +194,16 @@ def test_one_tag_is_worth_one_vote_however_long_it_is():
     assert short[:, A].sum() == 0 and short[:, D].sum() == 0
 
 
-def test_a_defending_phase_votes_for_the_other_team():
-    vote = tagging.votes([instance("DEFENDING IN MIDDLE THIRD", 10, 60, Team="Home")],
-                         200, "Home", "Away")
-    assert vote[:, A].sum() == pytest.approx(tagging.VOTE) and vote[:, H].sum() == 0
+def test_the_defending_copy_of_a_phase_and_other_codes_do_not_vote():
+    items = [instance("DEFENDING IN MIDDLE THIRD", 10, 60, Team="Home"),
+             instance("SET PIECES", 100, 200, Team="Away", Type="Corner Kick"),
+             instance("PLAYERS IN THE BOX", 300, 400, Team="Home"),
+             instance("GOALS", 500, 600, Team="Home")]
+    assert not tagging.votes(items, 1000, "Home", "Away").any()
 
 
-def test_a_set_piece_votes_dead_before_and_live_after():
-    vote = tagging.votes([instance("SET PIECES", 500, 600, Team="Away", Type="Corner Kick")],
-                         1000, "Home", "Away")
-    assert vote[425:500, D].sum() == pytest.approx(tagging.VOTE)
-    assert vote[500:600].sum() == 0                       # inside the window: no claim
-    assert vote[600:650, A].sum() == pytest.approx(tagging.VOTE)
-
-
-def test_a_goal_is_dead_ball_until_the_kick_off():
-    items = [instance("GOALS", 100, 200, Team="Home"),
-             instance("SET PIECES", 1500, 1600, Team="Away", Type="Kick Off (After Goal)")]
-    vote = tagging.votes(items, 3000, "Home", "Away")
-    assert (vote[200:1425, D] == tagging.GOAL_VOTE_PER_FRAME).all()
+def test_a_tag_without_a_team_does_not_vote():
+    assert not tagging.votes([instance("PROGRESSION", 10, 60, Team="N/A")], 200, "Home", "Away").any()
 
 
 def test_agreement_reads_a_defending_tag_as_the_other_team():
@@ -265,3 +256,53 @@ def test_perfect_prediction_scores_one_and_halves_are_scored_apart():
     result = evaluate.headline(evaluate.score(truth, [part.copy() for part in truth]))
     assert result["spellF1"] == pytest.approx(1.0) and result["n_true"] == 4
     assert len(segments(evaluate.stitch(truth))) == 6        # the half-time gap is its own run
+
+
+# -- boundary model targets and boundary-aware decoding ------------------------------------------
+
+def test_change_distances_mark_both_frames_at_a_change():
+    from vantage.labels import change_classes, change_distances
+
+    labels = codes("H" * 10 + "A" * 10 + "D" * 10 + "H" * 10)
+    turn, stop, start = change_distances(labels)
+    assert turn[9] == 0 and turn[10] == 0 and turn[8] == 1 and turn[12] == 2
+    assert stop[19] == 0 and stop[20] == 0 and stop[9] == 10
+    assert start[29] == 0 and start[30] == 0
+    classes = change_classes(change_distances(labels), 2)
+    assert classes[9] == 1 and classes[20] == 2 and classes[30] == 3 and classes[5] == 0
+
+
+def test_a_change_out_of_an_ungraded_stretch_is_not_a_restart():
+    from vantage.labels import DISTANCE_CAP, change_distances
+
+    labels = codes("X" * 10 + "H" * 10)
+    assert (change_distances(labels) == DISTANCE_CAP).all()
+
+
+def test_boundary_model_lets_a_short_possession_through_and_blocks_flicker():
+    # Evidence for a 20-frame away spell that a fixed cost would smooth away.
+    prob = np.full((400, 3), 0.1)
+    prob[:, H] = 0.8
+    prob[200:220] = [0.25, 0.65, 0.1]
+    config = decoding.DecodeConfig(cost_team=14.0, min_possession=0.4, boundary_weight=0.0)
+    assert (decoding.decode(prob, config) == H).all()
+
+    boundary = np.full((400, 4), 0.001)
+    boundary[:, 0] = 0.997
+    for frame in (200, 220):
+        boundary[frame - 2:frame + 3] = [0.05, 0.93, 0.01, 0.01]      # turnovers seen here
+    weighted = decoding.DecodeConfig(cost_team=14.0, min_possession=0.4, boundary_weight=2.0)
+    path = decoding.decode(prob, weighted, boundary)
+    assert (path[203:217] == A).all() and (path[:195] == H).all() and (path[225:] == H).all()
+
+    # The same evidence without a boundary signal stays smoothed, even with the weight on.
+    quiet = np.full((400, 4), 0.001)
+    quiet[:, 0] = 0.997
+    assert (decoding.decode(prob, weighted, quiet) == H).all()
+
+
+def test_extra_log_prob_is_added_before_decoding():
+    prob = np.full((100, 3), 1.0 / 3.0)
+    extra = np.zeros((100, 3))
+    extra[:, A] = 0.5
+    assert (decoding.decode(prob, decoding.DecodeConfig(), extra_log_prob=extra) == A).all()

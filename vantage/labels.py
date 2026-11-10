@@ -67,3 +67,51 @@ def spell_stats(labels, fps=FPS):
         return 0, 0.0, 0.0, 0.0
     return len(lengths), float(lengths.mean()), float(np.median(lengths)), float(
         np.mean(lengths < 2.0))
+
+
+# Kinds of change between consecutive frames, as used by the boundary model.
+NO_CHANGE, TURNOVER, STOP, RESTART = 0, 1, 2, 3
+DISTANCE_CAP = 250
+
+
+def change_distances(labels):
+    """(3, T) int16: frames from each frame to the nearest turnover, stoppage start and restart.
+
+    A change sits between two frames; both of them are at distance 0. Distances are capped at
+    DISTANCE_CAP. Changes into or out of an ungraded stretch are not changes of play and are
+    ignored.
+    """
+    t = len(labels)
+    out = np.full((3, t), DISTANCE_CAP, dtype=np.int32)
+    if t < 2:
+        return out.astype(np.int16)
+    before, after = labels[:-1], labels[1:]
+    alive_before = (before == H) | (before == A)
+    alive_after = (after == H) | (after == A)
+    kinds = {
+        TURNOVER: alive_before & alive_after & (before != after),
+        STOP: alive_before & (after == D),
+        RESTART: (before == D) & alive_after,
+    }
+    index = np.arange(t)
+    for kind, flag in kinds.items():
+        positions = np.flatnonzero(flag)          # change between frame p and p + 1
+        if not len(positions):
+            continue
+        marks = np.zeros(t, dtype=bool)
+        marks[positions] = True
+        marks[positions + 1] = True
+        last = np.maximum.accumulate(np.where(marks, index, -DISTANCE_CAP * 2))
+        nxt = np.minimum.accumulate(np.where(marks, index, t + DISTANCE_CAP * 2)[::-1])[::-1]
+        out[kind - 1] = np.minimum(np.minimum(index - last, nxt - index), DISTANCE_CAP)
+    return out.astype(np.int16)
+
+
+def change_classes(distances, width):
+    """Per-frame class for the boundary model: the kind of change within `width` frames, if any.
+
+    Where two kinds are both within reach the nearer one wins.
+    """
+    nearest = np.argmin(distances, axis=0)
+    reach = np.min(distances, axis=0) <= width
+    return np.where(reach, nearest + 1, NO_CHANGE).astype(np.int8)

@@ -16,7 +16,7 @@ import numpy as np
 from . import X, dfl, metrica_sample
 from .degrade import degrade, sample_config
 from .features import build
-from .labels import CONTROL_SECONDS, harmonise
+from .labels import CONTROL_SECONDS, change_distances, harmonise
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DFL_DIR = os.path.join(ROOT, "data", "external", "dfl")
@@ -76,12 +76,16 @@ def prepare_match(match, tag, variants, stride):
                 rows = np.arange(phase, version.n_frames, stride)
                 rows = rows[version.labels[rows] != X]
                 np.savez(path, table=table[rows], target=version.labels[rows],
-                         names=np.array(names))
+                         change=change_distances(version.labels)[:, rows], names=np.array(names))
 
 
-def load_training(tag, matches, variants):
-    """(feature names, table, target) concatenated over the given matches."""
-    tables, targets, names = [], [], None
+def load_training(tag, matches, variants, with_change=False):
+    """(feature names, table, target) concatenated over the given matches.
+
+    With `with_change`, a fourth value is returned: the (3, N) distances to the nearest change
+    of each kind, which are the boundary model's targets.
+    """
+    tables, targets, changes, names = [], [], [], None
     for match in matches:
         for period in (1, 2):
             for variant in range(variants):
@@ -89,5 +93,9 @@ def load_training(tag, matches, variants):
                     with np.load(train_table_path(tag, match, period, variant, view)) as data:
                         tables.append(data["table"])
                         targets.append(data["target"])
+                        if with_change:
+                            changes.append(data["change"])
                         names = [str(name) for name in data["names"]]
+    if with_change:
+        return names, np.concatenate(tables), np.concatenate(targets), np.concatenate(changes, axis=1)
     return names, np.concatenate(tables), np.concatenate(targets)

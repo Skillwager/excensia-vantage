@@ -15,6 +15,9 @@ the simulator, side by side):
   twice a minute. It does not flicker. Most disappearances go with a stoppage: the track ends
   around the moment play stops and resumes shortly after the restart, once the ball is moving
   again (a run of the ball almost never begins with the ball at rest).
+* At a stoppage where the ball never leaves the pitch (a foul), the ball rolls to a stop in view
+  and the track holds it for a few seconds before losing it. A ball at rest is almost never
+  tracked for longer than ten seconds.
 * It is also lost during live play, a few times a half, and can stay lost for many seconds.
 * A visible ball is almost never off the pitch.
 * Player tracks are smooth and long. Players go missing for long spells rather than single
@@ -39,7 +42,12 @@ from . import D, FPS
 class DegradeConfig:
     # -- ball: stoppages ------------------------------------------------------------------
     dead_hidden: float = 0.85         # chance a short stoppage (under 5 s) hides the ball
-    dead_watched: float = 0.03        # chance a longer stoppage is tracked all the way through
+    dead_watched: float = 0.03        # chance a longer stoppage is tracked throughout when the
+                                      # ball leaves the pitch (throw-in, corner, goal kick)
+    dead_watched_in: float = 0.2      # chance a stoppage under 10 s with the ball still on the
+                                      # pitch (a foul) is tracked throughout
+    linger: float = 3.0               # s, mean time the track holds a ball that has stopped on
+                                      # the pitch before losing it
     lose_shift: float = 0.0           # s, mean of when the track ends relative to the stoppage
     lose_spread: float = 0.8          # s
     early_find: float = 0.05          # chance the ball is picked up again before the restart
@@ -76,7 +84,9 @@ def sample_config(rng):
     return DegradeConfig(
         dead_hidden=float(rng.uniform(0.5, 1.0)),
         dead_watched=float(rng.uniform(0.0, 0.1)),
-        lose_shift=float(rng.uniform(-2.0, 1.0)),
+        dead_watched_in=float(rng.uniform(0.0, 0.4)),
+        linger=float(rng.uniform(1.0, 6.0)),
+        lose_shift=float(rng.uniform(-2.5, 0.5)),
         lose_spread=float(rng.uniform(0.3, 2.0)),
         early_find=float(rng.uniform(0.0, 0.15)),
         early_find_mean=float(rng.uniform(0.5, 4.0)),
@@ -149,12 +159,27 @@ def _hidden_ball(half, rng, config, ball, height):
     hidden = np.zeros(t, dtype=bool)
     stoppages = _runs(dead)
 
+    length, width = half.pitch
+    margin = np.minimum(length / 2 - np.abs(ball[:, 0]), width / 2 - np.abs(ball[:, 1]))
     for start, stop in stoppages:
         short = stop - start < 5 * FPS
-        watched = (1.0 - config.dead_hidden) if short else config.dead_watched
+        # Does the ball leave the pitch as play stops? A ball that stays on it (a foul, an
+        # offside) is in plain view and is often tracked straight through the stoppage.
+        window = margin[max(0, start - 5):min(t, start + 3 * FPS)]
+        leaves = bool(np.any(window[np.isfinite(window)] < 0.3))
+        if short:
+            watched = 1.0 - config.dead_hidden
+        elif leaves:
+            watched = config.dead_watched
+        else:
+            watched = config.dead_watched_in if stop - start < 10 * FPS else 0.0
         if rng.random() < watched:
             continue                                   # this stoppage is tracked throughout
-        lose = start + _frames(rng.normal(config.lose_shift, config.lose_spread))
+        if leaves:
+            lose = start + _frames(rng.normal(config.lose_shift, config.lose_spread))
+        else:
+            # The ball rolls to a stop in view and is held for a few seconds before it is lost.
+            lose = start + _frames(min(rng.exponential(config.linger), 12.0))
         if rng.random() < config.early_find:
             find = stop - _frames(rng.exponential(config.early_find_mean))
         else:

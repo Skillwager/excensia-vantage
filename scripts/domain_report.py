@@ -56,6 +56,9 @@ def describe(half):
         float(np.mean(speed[np.isfinite(speed)] < 0.8)))
     still = run_lengths(np.nan_to_num(speed, nan=99.0) < 0.8) / FPS
     out["ball-at-rest run seconds p50/90/99"] = percentiles(still, (50, 90, 99))
+    out["at-rest time in runs >3s / >10s (share of visible)"] = "{:.3f} / {:.3f}".format(
+        still[still > 3].sum() * FPS / max(seen.sum(), 1),
+        still[still > 10].sum() * FPS / max(seen.sum(), 1))
     jump = np.sqrt(np.sum(np.square(ball[1:] - ball[:-1]), axis=1)) * FPS
     out["frame-to-frame ball speed >45 m/s share"] = "{:.4f}".format(
         float(np.mean(jump[np.isfinite(jump)] > BALL_MAX_SPEED)))

@@ -1,47 +1,47 @@
 """Use the provided Smart Tagging as extra evidence.
 
 Smart Tagging is Metrica's automatic annotation of the tactical video: 638 intervals, each with a
-code and tags. The organisers describe it as "a strong free prior" and also as fallible, and both
-halves of that are respected here: a tag never sets a label. Each tag casts one bounded *vote*,
+code and tags. The organisers describe it as "a strong free prior" and also as fallible. Both
+are respected here: a tag never sets a label. Each tag casts one bounded *vote* for a team,
 spread over the frames it covers, which is added to the model's own evidence before decoding.
 
-What each code is taken to say comes from the organisers' published definitions (OVERVIEW.md):
+Which tags vote, and why only these
+-----------------------------------
+Two label-free checks on the provided files decided it (scripts/tag_check.py prints both; they
+compare the tags with the ball's visibility and with tracking-only labels, never with ground
+truth):
 
-* The team **performing** an attacking phase has the ball: build up, progression, creating
-  chances, attacking transition, long ball, ball in final third, ball in the box, players in the
-  box.
-* The team performing a **defending** phase does not: defending in any third, defensive
-  transition. The vote goes to the other team.
-* A **set piece** is a restart. The tag is a window around the restart, so the seconds before the
-  window are voted dead ball and the seconds after it are voted live, for the tagged team when it
-  is named (throw-ins are tagged without a team).
-* After a tagged **goal**, the ball is dead until the following tagged kick-off.
+* The intervals are clips, not measurements: every corner, throw-in, goal kick and free kick is
+  exactly 35 seconds long and every kick-off exactly 5. A clip says a set piece is in there
+  somewhere, not when the ball was put back in play, so set pieces and goals do not vote.
+* The four attacking phases (build up, progression, creating chances, attacking transition)
+  carry the team that has the ball, by the organisers' definitions (OVERVIEW.md). Each is tagged
+  a second time from the defending side with the same interval; that copy is the same evidence
+  and is not counted again. The remaining codes (ball in final third, ball in the box, players
+  in the box, long ball) cover long stretches that run through stoppages and through the other
+  team's possession, and do not vote.
 
 The size of a vote is fixed by reasoning, not fitted: there is no other match with these tags to
 fit it on, and fitting it on this match is not allowed. One tag is worth `VOTE` in log-odds in
 total however long it is, about the weight of a single source that is right nineteen times in
-twenty, so a wrong tag can only overturn tracking evidence that was weak to begin with.
+twenty, so a wrong tag can only overturn tracking evidence that was weak to begin with. In
+practice that means a tag matters where the ball is untracked and the players alone leave the
+answer open, and nowhere else.
 """
 
 import xml.etree.ElementTree as ET
 
 import numpy as np
 
-from . import A, D, FPS, H
+from . import A, FPS, H
 
 VOTE = 3.0                    # total log-odds of one tag, spread over its frames
-RESTART_BEFORE = 3.0          # seconds before a set-piece window voted dead ball
-RESTART_AFTER = 2.0           # seconds after it voted live
-GOAL_MAX_WAIT = 180.0         # a goal's dead ball lasts until a kick-off within this many seconds
-GOAL_VOTE_PER_FRAME = 0.5     # the laws of the game, not an estimate: stronger than a phase tag
 
-IN_POSSESSION = {"BUILD UP", "PROGRESSION", "CREATING CHANCES", "ATTACKING TRANSITION",
-                 "LONG BALL", "BALL IN FINAL THIRD", "BALL IN THE BOX", "PLAYERS IN THE BOX"}
+IN_POSSESSION = {"BUILD UP", "PROGRESSION", "CREATING CHANCES", "ATTACKING TRANSITION"}
+# The same intervals seen from the other side. Read for the checks, never voted twice.
 OUT_OF_POSSESSION = {"DEFENDING IN ATTACKING THIRD", "DEFENDING IN MIDDLE THIRD",
                      "DEFENDING IN DEFENSIVE THIRD", "DEFENSIVE TRANSITION"}
 SET_PIECE = "SET PIECES"
-GOAL = "GOALS"
-KICK_OFF_AFTER_GOAL = "kick off (after goal)"
 
 
 def load(path, fps=FPS):
@@ -61,9 +61,8 @@ def load(path, fps=FPS):
 def team_code(name, home_name, away_name):
     """H, A or None for a Team tag, matching the tag text to the tracking's two team names.
 
-    The tagging spells one club slightly differently from the tracking metadata, so this compares
-    letters rather than whole strings. A name that fits neither team (the published 'N/A')
-    returns None.
+    Compares letters rather than whole strings, so a small spelling difference between the two
+    files does not matter. A name that fits neither team (the published 'N/A') returns None.
     """
     import difflib
 
@@ -80,49 +79,26 @@ def team_code(name, home_name, away_name):
     return H if scores[0] > scores[1] else A
 
 
-def votes(instances, n_frames, home_name, away_name, fps=FPS):
+def votes(instances, n_frames, home_name, away_name):
     """(n_frames, 3) log-odds to add to log-probabilities of home, away, dead ball."""
     out = np.zeros((n_frames, 3), dtype=np.float64)
-
-    def spread(start, stop, column, total):
-        start, stop = max(0, start), min(n_frames, stop)
-        if stop > start:
-            out[start:stop, column] += total / float(stop - start)
-
-    kick_offs = sorted(item["start"] for item in instances
-                       if item["code"] == SET_PIECE
-                       and item["tags"].get("Type", "").lower() == KICK_OFF_AFTER_GOAL)
-
     for item in instances:
-        code, start, end = item["code"], item["start"], item["end"]
+        if item["code"] not in IN_POSSESSION:
+            continue
         team = team_code(item["tags"].get("Team"), home_name, away_name)
-
-        if code in IN_POSSESSION and team is not None:
-            spread(start, end, team, VOTE)
-        elif code in OUT_OF_POSSESSION and team is not None:
-            spread(start, end, A if team == H else H, VOTE)
-        elif code == SET_PIECE:
-            spread(start - int(RESTART_BEFORE * fps), start, D, VOTE)
-            after = (end, end + int(RESTART_AFTER * fps))
-            if team is not None:
-                spread(after[0], after[1], team, VOTE)
-            else:
-                spread(after[0], after[1], H, VOTE / 2.0)
-                spread(after[0], after[1], A, VOTE / 2.0)
-        elif code == GOAL:
-            following = [frame for frame in kick_offs if end <= frame <= end + GOAL_MAX_WAIT * fps]
-            if following:
-                stop = min(n_frames, following[0])
-                out[max(0, end):stop, D] += GOAL_VOTE_PER_FRAME
+        start, stop = max(0, item["start"]), min(n_frames, item["end"])
+        if team is None or stop <= start:
+            continue
+        out[start:stop, team] += VOTE / float(stop - start)
     return out
 
 
 def agreement(instances, labels, home_name, away_name):
-    """Share of tagged frames on which a label sequence agrees with the tags, per kind of tag.
+    """Share of tagged live frames on which a label sequence agrees with the tags, by kind.
 
-    A check that needs no ground truth: it compares the tags with the tracking-only labels. If
-    the meaning assumed for a code were wrong (say, the team of a defending phase), agreement for
-    that kind would sit well under one half instead of well over it.
+    A check that needs no ground truth: it compares the tags with tracking-only labels. If the
+    meaning assumed for a kind were wrong (say, the team of a defending phase), its agreement
+    would sit well under one half instead of well over it.
     """
     kinds = {"in_possession": [0, 0], "out_of_possession": [0, 0]}
     for item in instances:

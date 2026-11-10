@@ -41,6 +41,22 @@ def fit(table, target, names, seed=0, rounds=ROUNDS, params=None, weight=None):
     return lightgbm.train(settings, data, num_boost_round=rounds)
 
 
+BOUNDARY_WIDTH = 6           # frames either side of a change that count as "at the change"
+BOUNDARY_PARAMS = {"num_class": 4, "min_data_in_leaf": 150}
+
+
+def fit_boundary(table, change, names, seed=0, rounds=ROUNDS, width=BOUNDARY_WIDTH):
+    """The boundary model: is a turnover, a stoppage or a restart happening right here?
+
+    Same features, different question. The frame classifier is dominated by the long middles of
+    possessions; this model is trained on the moments between them.
+    """
+    from .labels import change_classes
+
+    return fit(table, change_classes(change, width), names, seed=seed, rounds=rounds,
+               params=BOUNDARY_PARAMS)
+
+
 def predict_table(booster, table):
     return booster.predict(table, num_threads=PARAMS["num_threads"])
 
@@ -60,3 +76,22 @@ def predict_half(booster, half, names=None):
     mirrored = predict_table(booster, mirrored_table)
     mirrored = mirrored[:, [A, H, 2]]
     return (0.5 * (direct + mirrored)).astype(np.float64)
+
+
+def predict_half_both(booster, boundary_booster, half, names=None):
+    """(state probabilities (T, 3), boundary probabilities (T, 4)), each averaged over both views.
+
+    The kinds of change (turnover, stoppage, restart) read the same from either side, so the
+    mirrored boundary answer needs no remapping.
+    """
+    own_names, table = build(half)
+    if names is not None and list(names) != list(own_names):
+        raise ValueError("feature names differ from the ones the model was trained on")
+    _, mirrored_table = build(half.swapped())
+    state = 0.5 * (predict_table(booster, table)
+                   + predict_table(booster, mirrored_table)[:, [A, H, 2]])
+    if boundary_booster is None:
+        return state.astype(np.float64), None
+    boundary = 0.5 * (predict_table(boundary_booster, table)
+                      + predict_table(boundary_booster, mirrored_table))
+    return state.astype(np.float64), boundary.astype(np.float64)
