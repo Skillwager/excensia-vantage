@@ -137,7 +137,9 @@ def export(args):
     if not args.no_evidence:
         evidence = []
         for half in halves:
-            names, table = build_features(half)
+            built, table = build_features(half)
+            names = card["features"]                 # the columns this model was trained on
+            table = table[:, [built.index(name) for name in names]]
             codes = labels[half.first_frame:half.first_frame + half.n_frames]
             evidence.append(viewer_export.evidence_shares(
                 state_model, table, names, np.minimum(codes, 2).astype(np.int64),

@@ -43,7 +43,9 @@ def main():
         state, boundary = model.predict_half_both(state_model, boundary_model, noisy,
                                                   card["features"])
         codes = decoding.decode(state, config, boundary)
-        names, table = build(noisy)
+        built, table = build(noisy)
+        names = card["features"]                     # the columns this model was trained on
+        table = table[:, [built.index(name) for name in names]]
         evidence.append(viewer_export.evidence_shares(state_model, table, names,
                                                       codes.astype(np.int64), every=args.every))
         halves.append(noisy)

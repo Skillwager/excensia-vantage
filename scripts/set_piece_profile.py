@@ -78,6 +78,18 @@ def main():
             if dead is not None:
                 row += "     {:>6.2f}".format(np.mean(called))
             print(row + ("   <- tag starts" if second == 0 else ""))
+        if dead is not None:
+            # The restart is tagging.RESTART_LEAD into the clip. The five seconds before it
+            # should be a stoppage whatever the tracker saw of the ball.
+            lead = int(round(tagging.RESTART_LEAD * FPS))
+            before = [dead[item["start"] + lead - 5 * FPS:item["start"] + lead].mean()
+                      for item in items
+                      if item["start"] + lead - 5 * FPS >= 0
+                      and covered[item["start"] + lead - 5 * FPS:item["start"] + lead].all()]
+            if before:
+                print("  in the five seconds before the restart the file calls dead ball on "
+                      "{:.2f} of frames; at least half of them at {} of {} tags".format(
+                          np.mean(before), int(np.sum(np.array(before) >= 0.5)), len(before)))
 
 
 if __name__ == "__main__":
