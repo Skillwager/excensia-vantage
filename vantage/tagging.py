@@ -2,18 +2,25 @@
 
 Smart Tagging is Metrica's automatic annotation of the tactical video: 638 intervals, each with a
 code and tags. The organisers describe it as "a strong free prior" and also as fallible. Both
-are respected here: a tag never sets a label. Each tag casts one bounded *vote* for a team,
-spread over the frames it covers, which is added to the model's own evidence before decoding.
+are respected here: a tag never sets a label. It is used in two ways.
 
-Which tags vote, and why only these
------------------------------------
-Two label-free checks on the provided files decided it (scripts/tag_check.py prints both; they
-compare the tags with the ball's visibility and with tracking-only labels, never with ground
-truth):
+Set pieces are restarts
+-----------------------
+Every corner, throw-in, goal kick and free kick tag is a clip exactly 35 seconds long, and every
+kick-off tag exactly 5. A clip does not say when the ball was put back in play, but it is cut a
+fixed time before that moment (see `RESTART_LEAD`). So each set-piece tag gives a restart: the
+frame play resumed after a stoppage, and for corners, goal kicks and free kicks the team that
+took it. `restarts` returns them, and the model reads them as features (vantage/features.py).
+It learned what they are worth on other matches, where such tags were imitated from the labels
+(vantage/external.py).
 
-* The intervals are clips, not measurements: every corner, throw-in, goal kick and free kick is
-  exactly 35 seconds long and every kick-off exactly 5. A clip says a set piece is in there
-  somewhere, not when the ball was put back in play, so set pieces and goals do not vote.
+Phases vote for a team
+----------------------
+Each attacking phase casts one bounded *vote* for a team, spread over the frames it covers,
+which is added to the model's own evidence before decoding. Label-free checks on the provided
+files decided which phases vote (scripts/tag_check.py; they compare the tags with the ball's
+visibility and with tracking-only labels, never with ground truth):
+
 * The four attacking phases (build up, progression, creating chances, attacking transition)
   carry the team that has the ball, by the organisers' definitions (OVERVIEW.md). Each is tagged
   a second time from the defending side with the same interval; that copy is the same evidence
