@@ -90,6 +90,9 @@ const child = spawn(
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-sync",
+    // Extensions registered for every profile on this computer (a PDF viewer, a VPN) would
+    // otherwise install themselves into this window's empty profile and could read the page.
+    "--disable-extensions",
     "--autoplay-policy=no-user-gesture-required",
     "--remote-debugging-port=0",
   ],
