@@ -13,6 +13,8 @@ It takes plain arrays, in a tracking file: a NumPy .npz with
     ball        (T, 2), NaN where the ball is not seen
     periods     optional (K, 2): first and last frame of each stretch of play (a half). The whole
                 file is one stretch when this is absent.
+    period_names  optional (K,) text: what the viewer calls each stretch (for clips joined into
+                one file, the clip's time in the match and what happened in it)
     camera      optional (T, 3, 3): for each frame, the matrix taking a pitch position in metres
                 (x, y, 1) to the pixel of the video that shows it; NaN where it is not known.
                 With it the viewer draws the tracking on the video.
@@ -92,8 +94,13 @@ def load(path):
         def text(key, fallback):
             return str(data[key]) if key in data.files else fallback
 
+        period_names = None
+        if "period_names" in data.files:
+            period_names = [str(name) for name in np.asarray(data["period_names"]).reshape(-1)]
+            if len(period_names) != len(periods):
+                raise ValueError("period_names has {} names for {} periods".format(len(period_names), len(periods)))
         return {"pitch": pitch, "home": home, "away": away, "ball": ball, "periods": periods,
-                "camera": camera, "title": text("title", "Match"),
+                "period_names": period_names, "camera": camera, "title": text("title", "Match"),
                 "home_name": text("home_name", "Home"), "away_name": text("away_name", "Away")}
 
 
@@ -149,8 +156,8 @@ def run_file(tracking, halves, labels, states, state_model=None, card=None, ever
         valid = np.isfinite(matrices).all(axis=(1, 2))
         camera = viewer_export.camera(matrices, valid, tracking["pitch"], tracking["camera"]["size"],
                                       0, len(labels), every=every, metres=True)
-    names = ["1st half", "2nd half"] if len(halves) == 2 else [
-        "Part {}".format(index + 1) for index in range(len(halves))]
+    names = tracking.get("period_names") or (["1st half", "2nd half"] if len(halves) == 2 else [
+        "Part {}".format(index + 1) for index in range(len(halves))])
     return viewer_export.build(tracking["title"], tracking["home_name"], tracking["away_name"],
                                labels, halves, states, evidence, every=every, period_names=names,
                                camera=camera)

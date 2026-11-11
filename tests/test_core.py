@@ -469,3 +469,26 @@ def test_any_tracking_becomes_halves_with_the_home_team_attacking_the_same_way(t
     assert run["camera"]["size"] == [1920, 1080] and run["camera"]["every"] == 5
     assert run["camera"]["pitch_to_image"][0] == [10.0, 0.0, 960.0, 0.0, 10.0, 540.0, 0.0, 0.0, 1.0]
     assert "withheld" not in run["video"]
+
+
+def test_clips_joined_into_one_file_keep_their_names(tmp_path):
+    frames = 100
+    home = np.zeros((frames, 2, 2), dtype=np.float32)
+    away = np.zeros((frames, 2, 2), dtype=np.float32)
+    home[:, :, 0] = [-30.0, -10.0]
+    away[:, :, 0] = [30.0, 10.0]
+    ball = np.zeros((frames, 2), dtype=np.float32)
+    path = tmp_path / "clips.npz"
+    common = dict(fps=25.0, pitch=np.array([100.0, 60.0]), home=home, away=away, ball=ball,
+                  periods=np.array([[0, 49], [50, 99]]))
+    np.savez(path, period_names=np.array(["12:40 Shot on goal", "33:04 Goal"]), **common)
+    data = anymatch.load(path)
+    halves = anymatch.halves_of(data)
+    labels = np.full(frames, H, dtype=np.int8)
+    states = [np.tile(np.array([0.8, 0.1, 0.1]), (50, 1))] * 2
+    run = anymatch.run_file(data, halves, labels, states, every=5)
+    assert [p["name"] for p in run["match"]["periods"]] == ["12:40 Shot on goal", "33:04 Goal"]
+    # one name too few is refused, not shown against the wrong clip
+    np.savez(path, period_names=np.array(["12:40 Shot on goal"]), **common)
+    with pytest.raises(ValueError):
+        anymatch.load(path)
