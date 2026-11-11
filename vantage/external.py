@@ -162,6 +162,13 @@ def prepare_match(match, tag, variants, stride):
                 phase = int(rng.integers(0, stride))
                 rows = np.arange(phase, version.n_frames, stride)
                 rows = rows[version.labels[rows] != X]
+                if version.meta.get("source") == "skillcorner":
+                    # The broadcast cuts away during stoppages, and its tracking with it: half
+                    # of this source's dead-ball frames have no players at all. The recording
+                    # the method is for never does that, so those frames are not learned from.
+                    seen = (np.isfinite(version.home_xy[..., 0]).sum(axis=1)
+                            + np.isfinite(version.away_xy[..., 0]).sum(axis=1))
+                    rows = rows[seen[rows] >= 14]
                 np.savez(path, table=table[rows], target=version.labels[rows],
                          change=change_distances(version.labels)[:, rows],
                          run=run_lengths(version.labels)[rows], names=np.array(names))

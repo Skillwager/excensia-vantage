@@ -120,19 +120,39 @@ def fold(args):
         # first or (--train-offset) a later one, so that the halves can be compared
         train = train[args.train_offset::args.train_every]
     training = external.load_training(args.data_tag, train, args.variants)
+    own_rows = len(training["target"])
+    weight = external.row_weights(training, args.metrica_weight, args.short_weight, args.short_seconds)
+    boundary_weight = external.row_weights(training, args.metrica_weight)
+    if args.skillcorner:
+        # SkillCorner's matches join the frame classifier's rows as they were recorded (one
+        # copy each: nothing is simulated on them). The boundary model is fitted without them,
+        # because their stoppages begin about half a second early (scripts/skillcorner_dead.py).
+        added = list(external.SKILLCORNER_MATCHES[:args.skillcorner])
+        extra = external.load_training(args.data_tag, added, 1)
+        if extra["names"] != training["names"]:
+            raise SystemExit("the SkillCorner tables were built with other features")
+        extra_weight = external.row_weights(extra, 1.0, args.short_weight, args.short_seconds)
+        if extra_weight is None:
+            extra_weight = np.ones(len(extra["target"]), dtype=np.float32)
+        if weight is None:
+            weight = np.ones(own_rows, dtype=np.float32)
+        weight = np.concatenate([weight, extra_weight * np.float32(args.skillcorner_weight)])
+        for key in ("table", "target", "run", "metrica"):
+            training[key] = np.concatenate([training[key], extra[key]])
+        print("added {} rows from {} SkillCorner matches at weight {}".format(
+            len(extra["target"]), len(added), args.skillcorner_weight), flush=True)
+        del extra
     names, table = training["names"], training["table"]
     print("train {} rows x {} features from {}".format(len(table), len(names), train), flush=True)
     started = time.time()
     state_model = model.fit(
         table, training["target"], names, seed=args.seed, rounds=args.rounds,
-        params=json.loads(args.state_params) or None,
-        weight=external.row_weights(training, args.metrica_weight, args.short_weight,
-                                    args.short_seconds))
+        params=json.loads(args.state_params) or None, weight=weight)
     boundary_model = None
     if not args.no_boundary:
         boundary_model = model.fit_boundary(
-            table, training["change"], names, seed=args.seed, rounds=args.boundary_rounds,
-            weight=external.row_weights(training, args.metrica_weight))
+            table[:own_rows], training["change"], names, seed=args.seed, rounds=args.boundary_rounds,
+            weight=boundary_weight)
     print("fit in {:.0f}s".format(time.time() - started), flush=True)
     del table, training
 
@@ -297,6 +317,9 @@ def main():
     p.add_argument("--variants", type=int, default=3)
     p.add_argument("--test", nargs="+", required=True)
     p.add_argument("--train-sources", nargs="*", default=None)
+    p.add_argument("--skillcorner", type=int, default=0,
+                   help="add the first so many SkillCorner matches to the frame classifier's rows")
+    p.add_argument("--skillcorner-weight", type=float, default=1.0)
     p.add_argument("--train-every", type=int, default=1,
                    help="train on every Nth of the fold's training matches only")
     p.add_argument("--train-offset", type=int, default=0)
