@@ -25,7 +25,7 @@ import numpy as np
 from . import A, D, FPS, H
 
 # Minimum length of a possession, per source of labels: none. See the note above.
-CONTROL_SECONDS = {"metrica": 0.0, "dfl": 0.0}
+CONTROL_SECONDS = {"metrica": 0.0, "dfl": 0.0, "skillcorner": 0.0}
 
 # The thresholds of the earlier, merged labels, kept so that the two can be compared.
 MERGED_SECONDS = {"metrica": 2.0, "dfl": 3.0}

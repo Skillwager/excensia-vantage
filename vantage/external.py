@@ -15,7 +15,7 @@ import numpy as np
 
 from dataclasses import replace
 
-from . import A, D, FPS, H, X, dfl, metrica_sample
+from . import A, D, FPS, H, X, dfl, metrica_sample, skillcorner
 from .degrade import DegradeConfig, degrade, sample_config
 from .features import build
 from .labels import CONTROL_SECONDS, change_distances, harmonise, run_lengths
@@ -29,6 +29,11 @@ CACHE = os.path.join(ROOT, "data", "cache")
 
 METRICA_MATCHES = tuple("metrica{}".format(game) for game in metrica_sample.GAMES)
 ALL_MATCHES = tuple(dfl.MATCHES) + METRICA_MATCHES
+
+# A third source, kept apart from the ten above: SkillCorner's open A-League matches, which are
+# automatic tracking as it was recorded (vantage/skillcorner.py). Nothing is simulated on them.
+SKILLCORNER_DIR = os.path.join(ROOT, "data", "external", "skillcorner")
+SKILLCORNER_MATCHES = skillcorner.MATCHES
 
 # The simulated recording conditions a held-out match is scored under. None is the corrected
 # tracking as published; "random" draws a setting from the same ranges the training passes use.
@@ -64,7 +69,9 @@ def seed_for(*parts):
 
 
 def source_of(match):
-    return "metrica" if match.startswith("metrica") else "dfl"
+    if match.startswith("metrica"):
+        return "metrica"
+    return "skillcorner" if match.startswith("sc") else "dfl"
 
 
 def labelled_halves(match):
@@ -72,6 +79,8 @@ def labelled_halves(match):
     source = source_of(match)
     if source == "metrica":
         halves = metrica_sample.load_game(int(match[-1]), METRICA_DIR)
+    elif source == "skillcorner":
+        halves = skillcorner.load_match(match, SKILLCORNER_DIR, CACHE)
     else:
         halves = dfl.load_match(match, DFL_DIR, CACHE)
     for half in halves:
@@ -81,6 +90,8 @@ def labelled_halves(match):
 
 def observed(half, rng, config):
     """What automatic tracking might have recorded of this half."""
+    if half.meta.get("source") == "skillcorner":
+        return half         # it is automatic tracking: what was recorded is what there is
     if half.meta.get("source") == "metrica-sample":
         half = metrica_sample.with_dead_ball_track(half, rng)
         if config is not None:

@@ -31,9 +31,24 @@ GRID_FIELDS = ("cost_team", "cost_to_dead", "cost_from_dead", "boundary_weight",
                "min_possession", "min_dead")
 
 
-def decode_grid(with_boundary):
-    """The decoding settings that are compared. A stoppage costs the same to enter and to leave."""
+def decode_grid(with_boundary, wide=False):
+    """The decoding settings that are compared. A stoppage costs the same to enter and to leave.
+
+    `wide` is a second grid that starts where the first one ends: the setting the first one
+    chooses is at its edge in four numbers, and this looks beyond that edge.
+    """
     grid = []
+    if wide:
+        for cost_team in (2.0, 4.0, 8.0):
+            for cost_dead in (14.0, 20.0, 28.0):
+                for weight in (0.0, 8.0, 12.0, 16.0, 24.0):
+                    for bias in ((0.0, -0.5, -1.0) if weight else (0.0,)):
+                        for min_possession in (0.4, 0.8, 1.2):
+                            grid.append(decoding.DecodeConfig(
+                                cost_team=cost_team, cost_to_dead=cost_dead,
+                                cost_from_dead=cost_dead, boundary_weight=weight,
+                                boundary_bias=bias, min_possession=min_possession, min_dead=0.5))
+        return grid
     if not with_boundary:
         for cost_team in (0.5, 2.0, 6.0, 12.0):
             for cost_dead in (10.0, 14.0, 20.0):
@@ -100,6 +115,10 @@ def fold(args):
     train = [match for match in ALL_MATCHES if match not in test]
     if args.train_sources:
         train = [match for match in train if source_of(match) in args.train_sources]
+    if args.train_every > 1:
+        # fewer matches, to see how much their number matters: every Nth, starting with the
+        # first or (--train-offset) a later one, so that the halves can be compared
+        train = train[args.train_offset::args.train_every]
     training = external.load_training(args.data_tag, train, args.variants)
     names, table = training["names"], training["table"]
     print("train {} rows x {} features from {}".format(len(table), len(names), train), flush=True)
@@ -177,7 +196,7 @@ def rescore(args):
                 truth = [half.labels for half in labelled_halves(match)]
                 halves = [(labels, state, boundary)
                           for labels, (_, state, boundary) in zip(truth, halves)]
-            grid = decode_grid(halves[0][2] is not None)
+            grid = decode_grid(halves[0][2] is not None, wide=getattr(args, "wide", False))
             scores = grid_scores(halves, grid)
             results["{}|{}".format(condition, match)] = scores
             best = int(np.argmax([s["spellF1"] for s in scores]))
@@ -278,6 +297,9 @@ def main():
     p.add_argument("--variants", type=int, default=3)
     p.add_argument("--test", nargs="+", required=True)
     p.add_argument("--train-sources", nargs="*", default=None)
+    p.add_argument("--train-every", type=int, default=1,
+                   help="train on every Nth of the fold's training matches only")
+    p.add_argument("--train-offset", type=int, default=0)
     p.add_argument("--tag", default="dev")
     p.add_argument("--rounds", type=int, default=model.ROUNDS)
     p.add_argument("--boundary-rounds", type=int, default=300)
@@ -296,6 +318,8 @@ def main():
     p.add_argument("--out-tag", required=True, help="where the new scores are written")
     p.add_argument("--relabel", action="store_true",
                    help="score against the labels as defined now, not the ones saved with the fold")
+    p.add_argument("--wide", action="store_true",
+                   help="score the wider grid that starts where the ordinary one ends")
     p.add_argument("--matches", nargs="*", default=None)
     p = sub.add_parser("summary")
     p.add_argument("--tag", required=True)
