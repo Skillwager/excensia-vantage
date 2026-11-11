@@ -113,11 +113,12 @@ player's clock with the viewer's clock (durations and clock readings, nothing of
 against the picture), and opened the page on a team member's computer. That was a mistake: the
 organisers' clarification of 3 November does not allow output to be checked against the video,
 and the assistant had not read it into its work. The page was closed and the option removed
-within hours. The run file of this match now tells the viewer to open no video beside it. No
-label, correction, constant or choice between versions came from that page: those choices are
-made on other matches (section 5) by the assistant, which never saw the page, and nothing seen
-on it was passed on by anyone. What the team does look at is the finished file in the viewer,
-with the match drawn from its tracking, and nothing is changed because of that either.
+within hours. The run file of this match now tells the viewer to open no video beside it.
+Nobody looked at the page: the assistant does not look at the match, and the team member on
+whose computer it was opened has confirmed that he never saw it. No label, correction, constant
+or choice between versions came from it; those choices are made on other matches (section 5).
+What the team does look at is the finished file in the viewer, with the match drawn from its
+tracking, and nothing is changed because of that either.
 
 **AI assistance.** The code and this document were written with a hosted AI coding assistant
 (Claude). The tracking rows, tags, homography and video of the match were kept out of its
