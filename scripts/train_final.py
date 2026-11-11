@@ -55,6 +55,8 @@ def main():
                              "in the frame classifier (1 = none)")
     parser.add_argument("--short-seconds", type=float, default=8.0)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--state-params", default="{}",
+                        help="JSON of LightGBM settings that replace the frame classifier's own")
     parser.add_argument("--decode", default="{}", help="JSON of DecodeConfig fields")
     parser.add_argument("--card-only", action="store_true",
                         help="rewrite the decoding settings of an existing model card, no training")
@@ -77,7 +79,9 @@ def main():
         len(table), len(names), len(external.ALL_MATCHES)), flush=True)
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    state_params = json.loads(args.state_params)
     state = model.fit(table, target, names, seed=args.seed, rounds=args.rounds,
+                      params=state_params or None,
                       weight=external.row_weights(training, args.metrica_weight, args.short_weight,
                                                   args.short_seconds))
     models = {"state": save(state, args.out + "_state.txt"), "boundary": None}
@@ -105,7 +109,7 @@ def main():
             "metrica_weight": args.metrica_weight,
             "short_weight": args.short_weight,
             "short_seconds": args.short_seconds,
-            "params": model.PARAMS,
+            "params": dict(model.PARAMS, **state_params),
             "control_seconds": CONTROL_SECONDS,
             "python": platform.python_version(),
             "numpy": np.__version__,

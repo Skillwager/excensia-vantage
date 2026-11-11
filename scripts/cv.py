@@ -106,6 +106,7 @@ def fold(args):
     started = time.time()
     state_model = model.fit(
         table, training["target"], names, seed=args.seed, rounds=args.rounds,
+        params=json.loads(args.state_params) or None,
         weight=external.row_weights(training, args.metrica_weight, args.short_weight,
                                     args.short_seconds))
     boundary_model = None
@@ -288,6 +289,8 @@ def main():
     p.add_argument("--short-seconds", type=float, default=8.0,
                    help="possessions at least this long keep weight one")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--state-params", default="{}",
+                   help="JSON of LightGBM settings that replace the frame classifier's own")
     p = sub.add_parser("rescore")
     p.add_argument("--tag", required=True, help="the run whose saved predictions are scored")
     p.add_argument("--out-tag", required=True, help="where the new scores are written")
