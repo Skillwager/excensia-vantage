@@ -62,7 +62,7 @@ output on any machine, which the reproduction rule needs.
 | Published constants | The graded frame ranges, the second-half kick-off frame and the fact that the graded frames before it are dead ball (DATA.md, FAQ.md). Ungraded frames are written `X`. |
 | Public 5-minute ground truth | Used to read the definition and to check the pipeline, as CHALLENGE.md and EVALUATION.md ask. No number was fitted to it, and no version was chosen by its score. The full account is below the table. |
 | Homography, tactical video | Not used by the method. The viewer in this repository shows the method's output drawn from the tracking and opens no video beside it. For the organisers' public five minutes it plays the tactical video with their labels, and uses the homography to draw the provided tracking on the picture (see "How the provided match was handled"). |
-| Broadcast video, tracking and homography | Not used. Aligning its timeline to the tactical one was considered as a way to recover the ball while the tactical tracker has lost it, and left out for lack of a way to validate it on other matches. |
+| Broadcast video, tracking and homography | Not used in the file. The broadcast tracking was placed on the tactical frames, without labels or video, to count what its ball would add where the tactical tracker has none. It adds little, because the two cameras lose the ball at the same moments, and what it adds cannot be validated on other matches (section 5, "The second recording"). The broadcast video and homography are not used by anything here. |
 
 **What the public five minutes were used for, in full.** Three things were learned from them,
 and each changed the method.
@@ -103,7 +103,9 @@ out in full so that the organisers can judge that for themselves.
 totals: `scripts/match_check.py` compares the loader against the figures in DATA.md (it
 reproduces them exactly: the ball on 94,214 of 158,857 graded frames, 20.5 tracked players on
 average), and `scripts/domain_report.py` prints percentiles and shares for a whole half, never a
-frame. Those totals shaped the simulator's ranges. No frame of the match was labelled, corrected
+frame. Those totals shaped the simulator's ranges. The second recording's tracking was read the
+same way, for the counts in section 5 (`scripts/broadcast_align.py`, `scripts/broadcast_try.py`),
+and nothing in the file comes from it. No frame of the match was labelled, corrected
 or inspected by a person for this method, and no constant refers to a frame or a moment of the
 match. The method never compares its output with the video.
 
@@ -136,7 +138,9 @@ shares, percentiles) over a half, a five-minute block, the public window, a stop
 window or all the tags of one kind, never frames. The scripts are in `scripts/` and print the
 same totals for anyone who runs them. The finest things it saw are the share of each of the four
 public stoppages that has a tracked ball, and how far the two kick-off tags start before the
-published kick-off frames (3.52 and 3.28 seconds). Of the video it saw the length and the frame
+published kick-off frames (3.52 and 3.28 seconds). Of the second recording it saw the two shifts
+that put its tracking on the tactical frames, one for each half, and totals over the graded
+frames. Of the video it saw the length and the frame
 size, from the clock comparison reported above. Two exceptions. Before the team had read that
 rule, a file search on a cloud drive returned to the assistant the opening lines, about a
 thousand characters each, of the two tracking metadata files, and the bundle's README. They
@@ -158,6 +162,12 @@ All of it is from other matches. None of it is from the provided game.
 
 We added no labels of our own to any match. `scripts/fetch_external.py` downloads the first
 dataset and checks every file against its published checksum; the second is a `git clone`.
+
+A third open source is used to check the finished method and not to train it: SkillCorner's
+open data, twenty matches of the 2024/25 Australian A-League with tracking made automatically
+from the broadcast picture (https://github.com/SkillCorner/opendata, MIT licence, with thanks to
+SkillCorner; `scripts/fetch_skillcorner.py` downloads it and checks every tracking file against
+the repository's own checksum). Section 5 says what it showed and why it is not training data.
 
 ## 4. The possession rules implemented
 
@@ -243,6 +253,50 @@ the time, those of six to twelve seconds 86%, three to six seconds 71%, and thos
 seconds 40%. Nearly half of the misses are short possessions swallowed by the other team's
 possession around them. Stoppages of three seconds or more are found 89 to 100% of the time.
 
+**On tracking that no simulator made.** Every number above comes from corrected tracking put
+through this project's own simulator, so the method had only been tested on noise it was built
+for. SkillCorner's open data is the opposite case: twenty matches as a different company's
+system tracked them automatically from the television picture, with that company's own record
+of who had the ball. The submitted models were run on all twenty as they are, with nothing
+fitted (`scripts/skillcorner_check.py`):
+
+| | spellF1 | macroF1 | Live or dead ball (F1) | Right team, on frames both call live |
+|---|---|---|---|---|
+| SkillCorner, 20 matches, tracking as recorded | 0.647 (0.576 to 0.717 by match) | 0.894 | 0.948 | 92.2% |
+| The ten matches above, typical simulated condition | 0.717 | 0.931 | 0.980 | 93.0% |
+
+The method carries over. On tracking unlike anything it was trained on it tells one team from
+the other as well as on its own simulated recordings, and live play from a stoppage a little
+less well. Part of the distance in spellF1 is a difference in what the labels are, not in how
+well they are found. In these files a possession is recorded only when a player has the ball
+under control, so 21% of the possessions are under three seconds, against 42% in the labels the
+method was trained to match, and the method writes short possessions that these labels do not
+hold: 1.37 times as many possessions as they contain, and of those it writes under three seconds
+only 27% match one. The stoppages also begin when the last player lets the ball go, about half a
+second before it crosses the line (`scripts/skillcorner_dead.py`), and the broadcast picture
+cuts away during stoppages, which leaves half of the dead-ball frames with no tracking at all.
+For those reasons the twenty matches are a check here and not training data. The labels are
+built by code from the published files, the way the source's own documentation defines team
+possession: dead ball where no phase of play covers a frame, otherwise the team of the latest
+player possession (`vantage/skillcorner.py`).
+
+**The second recording.** The broadcast tracking was placed on the tactical frames without a
+label or a video (`vantage/broadcast.py`, `scripts/broadcast_align.py`). A minute of broadcast
+records at a time is put where the ball follows the same path in the tactical tracking; each
+record is then kept only if its players have tactical players of the same team standing where
+they stand (within 2.5 metres, for at least 60% of at least four players). The broadcast runs at
+two fixed shifts from the tactical video, one for each half. 59% of its records are kept, the
+rest being replays, close-ups and crowd shots, and the kept ones cover 60% of the graded frames.
+What they add is small, because the two cameras lose the ball at the same moments: the tactical
+tracking has a ball on 59.3% of the graded frames, both have one on 44.3%, and only the broadcast
+has one on 3.7%. Where both see a ball the two are 0.8 metres apart in the middle, but more than
+five metres apart on 11% of those frames, so one of the two is following something else there.
+Filling the broadcast ball into the frames that have none (5,225 of them once positions off the
+pitch are left out) and labelling the match again changes 1.1% of the graded labels, in 97
+stretches with a middle length of 0.2 seconds (`scripts/broadcast_try.py`). That is not in the
+submitted file. Whether those changes are right cannot be told on this match without labels, and
+no other match has a second recording to test the step on.
+
 **The submitted file, without labels** (`scripts/pipeline_check.py`, `scripts/behaviour_report.py`).
 Beside each total is the range of the same total for the model's own output on the ten held-out
 matches over the six conditions. A file that behaved unlike anything seen in validation would
@@ -301,8 +355,11 @@ about six points.
   on the recording. One sign that they are imperfect: before two of the ten tagged goal kicks
   the model still sees live play, which is what a goalkeeper playing the ball out of his hands
   would look like.
-- With more time: aligning the broadcast tracking to recover the ball in live play, a learned
-  model of the tags once more tagged matches exist, and more external matches.
+- The tactical tracker's ball is missing mostly in long stretches (150 gaps in the graded frames,
+  79 of them over ten seconds), and the broadcast tracker is missing it at the same moments, so
+  the second recording does not supply what the first lacks.
+- With more time: a learned model of the tags once more tagged matches exist, and more external
+  matches whose labels keep short possessions.
 
 ## 7. Reproduction
 

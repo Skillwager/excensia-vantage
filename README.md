@@ -82,6 +82,9 @@ vantage/
   degrade.py         simulator that makes corrected tracking look like automatic tracking
   labels.py          the external possession labels, and the challenge's definition
   dfl.py, metrica_sample.py, external.py     the ten external matches
+  skillcorner.py     twenty more, real automatic tracking: a check on the method, not training data
+  broadcast.py       the second recording's tracking placed on the tactical frames; the entry
+                     does not use it
   evaluate.py, _official_metrics.py          scoring with the organisers' own metric code
   viewer_export.py   writes a run for the viewer: labels, confidence, evidence, tracking
   anymatch.py        the same engine on any other match's tracking (`python -m vantage tracking`);
@@ -134,6 +137,10 @@ The other scripts are the checks behind statements in the technical document:
 | `export_external.py` | A run file for the viewer from one of the open matches, so the whole path can be seen on open data. |
 | `public_truth_run.py` | The organisers' public five minutes as a run file for the viewer: their labels and the provided tracking, nothing from the model. Totals only are printed. |
 | `adversarial.py` | Whether a classifier can tell simulated from provided tracking, and on which features. |
+| `fetch_skillcorner.py`, `skillcorner_check.py`, `headline_cv.py` | SkillCorner's open A-League matches (1.9 GB, MIT licence): download with checksums, the shipped models run on them unchanged, and the parts of the score for any saved set of predictions. |
+| `skillcorner_look.py`, `skillcorner_labels.py`, `skillcorner_flag.py`, `skillcorner_dead.py` | How that source's files agree with each other, what its labels look like, and when its stoppages begin and end. |
+| `broadcast_align.py`, `broadcast_try.py` | The broadcast tracking placed on the tactical frames, and how many labels its ball would change. Totals only; nothing is written into the submission. |
+| `average_cv.py`, `stack_cv.py` | Two things tried on the finished method and not adopted: averaging seeds, and a second model on the first one's held-out predictions. |
 
 ## Tests
 
@@ -151,6 +158,8 @@ They run on generated data and need no match data of any kind.
   - Bassek, Rein, Weber, Memmert (2025), *An integrated dataset of spatiotemporal and event data
     in elite soccer*, doi:10.6084/m9.figshare.28196177.v1, CC BY 4.0 (seven matches);
   - Metrica Sports sample data, https://github.com/metrica-sports/sample-data (three matches).
+- A third open source is used to check the finished method and not to train it: SkillCorner Open
+  Data, https://github.com/SkillCorner/opendata, MIT licence (twenty matches; credit: SkillCorner).
 - `vantage/_official_metrics.py` is the organisers' metric code, vendored unchanged under its MIT
   licence.
 - This repository's own code is released under the MIT licence (see `LICENSE`).
