@@ -170,6 +170,28 @@ export function App() {
           try {
             const run = parseRunFile(carried.textContent, carried.getAttribute("data-name") ?? "match.run.json");
             show({ run, scene: null }, (link.seconds ?? 0) * run.fps);
+            // ...and it can name its video, published beside it (`python -m vantage tracking
+            // --video-url`): read like a file someone opened, so a withheld match still refuses it
+            const beside = carried.getAttribute("data-video");
+            if (beside && !run.videoWithheld) {
+              setBusy("Loading the match video…");
+              fetch(beside)
+                .then((response) => {
+                  if (!response.ok) throw new Error(String(response.status));
+                  return response.blob();
+                })
+                .then((blob) => {
+                  if (cancelled) return;
+                  const name = beside.split("/").pop() || "match.mp4";
+                  openVideo(new File([blob], name, { type: blob.type || "video/mp4" }));
+                })
+                .catch(() => {
+                  if (!cancelled) setNotice(`The match video (${beside}) could not be loaded. Open it with the video button.`);
+                })
+                .finally(() => {
+                  if (!cancelled) setBusy(null);
+                });
+            }
             return;
           } catch (error) {
             setNotice(error instanceof RunFileError ? `The match built into this page can't be opened. ${error.message}` : "The match built into this page can't be opened.");
@@ -182,6 +204,8 @@ export function App() {
       cancelled = true;
       cancelAnimationFrame(raf);
     };
+    // openVideo is declared further down; this runs after the first render, when it is there
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show, link]);
 
   // &play in the address: start once, as soon as the match is up

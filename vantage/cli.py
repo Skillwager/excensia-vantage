@@ -178,7 +178,7 @@ def tracking(args):
     print("wrote {}  ({:.1f} MB)".format(args.out, os.path.getsize(args.out) / 1e6))
     if args.page:
         viewer_export.write_page(args.page, run_file, args.viewer,
-                                 name=os.path.basename(args.out))
+                                 name=os.path.basename(args.out), video=args.video_url)
         print("wrote {}  (the viewer with this match built in; open it in a browser)".format(
             args.page))
     for key, value in viewer_export.summary(run_file).items():
@@ -220,6 +220,9 @@ def main(argv=None):
                          help="also write the viewer with this match built in, as one .html file")
     tracker.add_argument("--viewer", default=DEFAULT_VIEWER,
                          help="the built viewer to use for --page")
+    tracker.add_argument("--video-url", default=None,
+                         help="the match's video beside the page (e.g. match.mp4, published with it): "
+                              "the page opens with it playing")
     args = parser.parse_args(argv)
     return {"run": run, "export": export, "tracking": tracking}[args.command](args)
 

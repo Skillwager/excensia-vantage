@@ -261,13 +261,18 @@ def write(path, run):
     return path
 
 
-def write_page(path, run, template, name="match.run.json"):
+def write_page(path, run, template, name="match.run.json", video=None):
     """Write the viewer with this run built in: one file that opens straight on the match.
 
     `template` is the built viewer (viewer/dist/index.html). The run goes into the page as a
     data block the viewer reads when it starts. The same warning applies as for a run file: a
     page made from the competition match holds its tracking and stays on this machine.
+
+    `video` is the address of the match's video beside the page (a file name published with
+    it): the viewer loads it as if it had been opened. A run whose video is withheld refuses it.
     """
+    if video and (run.get("video") or {}).get("withheld"):
+        raise ValueError("this match's video is withheld: " + run["video"]["withheld"])
     with open(template, encoding="utf-8") as handle:
         html = handle.read()
     marker = "</body>"
@@ -275,8 +280,9 @@ def write_page(path, run, template, name="match.run.json"):
         raise ValueError("the viewer page at {} is not the built viewer".format(template))
     # "<" cannot end the block early or open a comment once it is written as an escape
     data = json.dumps(run, separators=(",", ":")).replace("<", "\\u003c")
-    block = '<script type="application/json" id="vantage-run" data-name="{}">{}</script>\n  '.format(
-        name.replace('"', ""), data)
+    beside = ' data-video="{}"'.format(video.replace('"', "").replace("<", "").replace("&", "")) if video else ""
+    block = '<script type="application/json" id="vantage-run" data-name="{}"{}>{}</script>\n  '.format(
+        name.replace('"', ""), beside, data)
     with open(path, "w", newline="\n", encoding="utf-8") as handle:
         handle.write(html.replace(marker, block + marker))
     return path

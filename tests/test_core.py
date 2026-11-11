@@ -471,6 +471,21 @@ def test_any_tracking_becomes_halves_with_the_home_team_attacking_the_same_way(t
     assert "withheld" not in run["video"]
 
 
+def test_a_page_can_name_its_video_unless_the_video_is_withheld(tmp_path):
+    template = tmp_path / "viewer.html"
+    template.write_text("<html><body><main></main>\n</body></html>", encoding="utf-8")
+    run = {"schema": "excensia.vantage.run/1", "video": {"offset_frames": 0}}
+    page = tmp_path / "page.html"
+    viewer_export.write_page(page, run, template, name="clip.run.json", video="clip.mp4")
+    html = page.read_text(encoding="utf-8")
+    assert 'id="vantage-run" data-name="clip.run.json" data-video="clip.mp4"' in html
+    viewer_export.write_page(page, run, template)
+    assert "data-video" not in page.read_text(encoding="utf-8")
+    withheld = {"schema": "excensia.vantage.run/1", "video": {"offset_frames": 0, "withheld": "Not beside these labels."}}
+    with pytest.raises(ValueError):
+        viewer_export.write_page(page, withheld, template, video="match.mp4")
+
+
 def test_clips_joined_into_one_file_keep_their_names(tmp_path):
     frames = 100
     home = np.zeros((frames, 2, 2), dtype=np.float32)
