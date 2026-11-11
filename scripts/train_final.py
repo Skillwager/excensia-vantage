@@ -45,7 +45,7 @@ def write_card(path, card):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--data-tag", default="v10")
-    parser.add_argument("--variants", type=int, default=3)
+    parser.add_argument("--variants", type=int, default=6)
     parser.add_argument("--rounds", type=int, default=model.ROUNDS)
     parser.add_argument("--boundary-rounds", type=int, default=300)
     parser.add_argument("--no-boundary", action="store_true")

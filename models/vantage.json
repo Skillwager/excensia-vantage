@@ -1,6 +1,6 @@
 {
   "decode": {
-    "boundary_bias": -0.5,
+    "boundary_bias": 0.0,
     "boundary_weight": 12.0,
     "cost_floor": 0.25,
     "cost_from_dead": 14.0,
@@ -8,7 +8,7 @@
     "cost_to_dead": 14.0,
     "floor": 0.0001,
     "min_dead": 0.5,
-    "min_possession": 0.8
+    "min_possession": 0.2
   },
   "features": [
     "a_cx",
@@ -269,14 +269,14 @@
   ],
   "models": {
     "boundary": {
-      "bytes": 8579679,
+      "bytes": 8619342,
       "file": "vantage_boundary.txt",
-      "sha256": "7aeccb1963f7eb8b8b2ce4e7e99ec6f42ddbc5d3c1a81f291848ddeb7da85b3d"
+      "sha256": "58cc90d1a2e32645167612e45fbf0d40bca167368dd93236f88ff246e7d8b6f1"
     },
     "state": {
-      "bytes": 8590030,
+      "bytes": 8634051,
       "file": "vantage_state.txt",
-      "sha256": "2b28fa6e69c98fe9667f476432bcdb664b2ca11ded09fb2ef4a0fad88faf3717"
+      "sha256": "02b2ccaf7d6d0060e244e1e7679994444dbb97db96849f3e8b88ad8a53d6360c"
     }
   },
   "package": "0.1.0",
@@ -284,13 +284,14 @@
     "boundary_rounds": 300,
     "boundary_width": 6,
     "class_counts": [
-      411198,
-      411282,
-      610084
+      822480,
+      822510,
+      1220141
     ],
     "control_seconds": {
       "dfl": 0.0,
-      "metrica": 0.0
+      "metrica": 0.0,
+      "skillcorner": 0.0
     },
     "data_tag": "v10",
     "lightgbm": "4.7.0",
@@ -326,10 +327,10 @@
     },
     "python": "3.12.13",
     "rounds": 400,
-    "rows": 1432564,
+    "rows": 2865131,
     "seed": 0,
     "short_seconds": 8.0,
     "short_weight": 4.0,
-    "variants": 3
+    "variants": 6
   }
 }

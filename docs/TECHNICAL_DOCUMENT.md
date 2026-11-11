@@ -23,7 +23,8 @@ to look like automatic tracking, and the result is applied to the competition ma
    away, what it does while the players are slow, how far it is from the nearest player, how
    often a team has an extra body). The quantities that cannot be measured without labels, such
    as how often a missing ball means a stoppage and how often a stoppage keeps its ball, are
-   drawn from wide ranges on every pass, so the model cannot rely on one answer.
+   drawn from wide ranges on every pass, so the model cannot rely on one answer. Every training
+   half is passed through it six times, each with its own draw.
 3. **Features that do not need identities or a ball on every frame.** For each frame: the ball
    and who is near it when it is seen; when it is not, how long it has been gone, how long until
    it returns, and what the picture was at both ends of the gap; which team last controlled it
@@ -213,18 +214,18 @@ published ("clean") is reported and not used for any choice. One decoding settin
 fold and condition. It is chosen on Metrica's three sample games, because their labels come from
 the provider that made the ground truth; the seven DFL matches are reported beside them.
 
-spellF1, mean over the held-out matches (`python scripts/cv.py summary --tag v11b --sources metrica`):
+spellF1, mean over the held-out matches (`python scripts/cv.py summary --tag v14six --sources metrica`):
 
 | Held-out matches | easy | typical | watched | random 1 | random 2 | harsh | mean of the six | clean |
 |---|---|---|---|---|---|---|---|---|
-| Metrica sample games (3) | 0.746 | 0.748 | 0.721 | 0.748 | 0.731 | 0.662 | **0.726** | 0.781 |
-| DFL matches (7) | 0.712 | 0.704 | 0.672 | 0.691 | 0.682 | 0.634 | 0.683 | 0.752 |
-| All ten | 0.722 | 0.717 | 0.687 | 0.708 | 0.697 | 0.642 | 0.696 | 0.760 |
+| Metrica sample games (3) | 0.750 | 0.755 | 0.722 | 0.738 | 0.732 | 0.679 | **0.729** | 0.780 |
+| DFL matches (7) | 0.719 | 0.712 | 0.674 | 0.698 | 0.685 | 0.641 | 0.688 | 0.757 |
+| All ten | 0.729 | 0.725 | 0.688 | 0.710 | 0.699 | 0.652 | 0.701 | 0.764 |
 
-macroF1 on the same runs is 0.920 on Metrica's games and 0.926 on the DFL matches. These labels
+macroF1 on the same runs is 0.922 on Metrica's games and 0.928 on the DFL matches. These labels
 keep every short possession, which makes them hard: 42% of the true possessions are under three
-seconds. The setting chosen lets the decoder write possessions down to 0.8 seconds and stoppages
-down to 0.5; floors of 0.2 and 0.4 seconds for a possession scored within 0.002 of it.
+seconds. The setting chosen lets the decoder write possessions down to 0.2 seconds and stoppages
+down to 0.5; floors of 0.4 and 0.8 seconds for a possession scored within 0.001 and 0.002 of it.
 
 **What each step was worth**, each measured on held-out matches at its own best decoding setting:
 
@@ -235,10 +236,32 @@ down to 0.5; floors of 0.2 and 0.4 seconds for a possession scored within 0.002 
 | Touch features | Four matches, five conditions, under the earlier labels | 0.754 | 0.761 |
 | Tagged restarts as inputs | Metrica games 1 and 2, six conditions | 0.708 | 0.712 |
 | More weight on short possessions in the frame classifier | Metrica's three games, six conditions (the seven DFL matches: 0.674 to 0.683) | 0.714 | 0.726 |
+| Six simulated recordings of every training half instead of three | Metrica's three games, six conditions (the seven DFL matches: 0.683 to 0.688) | 0.726 | 0.729 |
 
-The last step is small, and it is in the file because it is consistent: taken match by match
-over the six conditions, eight of the ten held-out matches gain between 0.003 and 0.022, one is
-unchanged and one loses 0.001.
+The last two steps are small, and they are in the file because they are consistent. Taken match
+by match over the six conditions, the weight on short possessions gains between 0.003 and 0.022
+on eight of the ten held-out matches, leaves one unchanged and costs one 0.001. Six recordings
+instead of three gain between 0.001 and 0.018 on eight and leave two unchanged.
+
+**What was tried on the finished method and not adopted.** Each line is the same five folds,
+paired match by match with the method as it stood before the last step (`scripts/compare_cv.py`):
+
+| Tried | Change in spellF1: Metrica's games, DFL matches, all ten | Matches that gain, that lose |
+|---|---|---|
+| The same models trained with another random seed (two seeds) | -0.001 to -0.002, -0.001 to -0.003, -0.001 to -0.003 | 2 and 2; 7 and 6 |
+| The average of three seeds | -0.001, -0.001, -0.001 | 3, 6 |
+| Three times the weight on Metrica's games | +0.000, -0.003, -0.002 | 4, 5 |
+| A second model reading the first one's held-out answers over the seconds around each frame | +0.005, -0.001, +0.001 | 4, 5 |
+| A wider grid of decoding settings, beyond the edge of the one used | +0.001, -0.004, -0.002 | 3, 6 |
+| Larger trees (127 leaves of at least 200 rows, instead of 63 of at least 300) | +0.003, +0.001, +0.001 | 7, 3 |
+| SkillCorner's twenty matches added to the training rows (see below) | -0.007, -0.011, -0.010 | 1, 8 |
+| Half of the training matches only | -0.007, -0.011, -0.010 | 1, 9 |
+
+The two seeds show how far chance alone moves these numbers: a few thousandths in the mean, with
+single matches going both ways. Nothing above stays clear of that. The last line was not a
+candidate. It asks whether the method is short of matches, and it is: half the matches cost a
+hundredth. No other open matches with labels of the right kind are known to us, which is why the
+step that was adopted gets more out of the same ten matches instead.
 
 The simulator that follows the ball through stoppages cannot be scored this way, because it
 changes the test itself: the simulated recordings it is tested on became harder and more like
@@ -248,10 +271,10 @@ the earlier simulator, at 51 with the new one, and at 52 once the tags became in
 final file still is.
 
 **Where it still fails** (the ten held-out matches, typical condition, a possession counted as
-found at an overlap of one half): possessions of twelve seconds or more are found 94 to 96% of
-the time, those of six to twelve seconds 86%, three to six seconds 71%, and those under three
-seconds 40%. Nearly half of the misses are short possessions swallowed by the other team's
-possession around them. Stoppages of three seconds or more are found 89 to 100% of the time.
+found at an overlap of one half): possessions of twelve seconds or more are found 96 to 97% of
+the time, those of six to twelve seconds 87%, three to six seconds 72%, and those under three
+seconds 43%. Of the misses, 46% are given to the other team and 40% are swallowed by a longer
+possession around them. Stoppages of three seconds or more are found 90 to 100% of the time.
 
 **On tracking that no simulator made.** Every number above comes from corrected tracking put
 through this project's own simulator, so the method had only been tested on noise it was built
@@ -262,8 +285,8 @@ fitted (`scripts/skillcorner_check.py`):
 
 | | spellF1 | macroF1 | Live or dead ball (F1) | Right team, on frames both call live |
 |---|---|---|---|---|
-| SkillCorner, 20 matches, tracking as recorded | 0.647 (0.576 to 0.717 by match) | 0.894 | 0.948 | 92.2% |
-| The ten matches above, typical simulated condition | 0.717 | 0.931 | 0.980 | 93.0% |
+| SkillCorner, 20 matches, tracking as recorded | 0.643 (0.573 to 0.719 by match) | 0.894 | 0.948 | 92.3% |
+| The ten matches above, typical simulated condition | 0.725 | 0.933 | 0.981 | 93.2% |
 
 The method carries over. On tracking unlike anything it was trained on it tells one team from
 the other as well as on its own simulated recordings, and live play from a stoppage a little
@@ -272,7 +295,7 @@ well they are found. In these files a possession is recorded only when a player 
 under control, so 21% of the possessions are under three seconds, against 42% in the labels the
 method was trained to match, and the method writes short possessions that these labels do not
 hold: 1.37 times as many possessions as they contain, and of those it writes under three seconds
-only 27% match one. The stoppages also begin when the last player lets the ball go, about half a
+only 25% match one. The stoppages also begin when the last player lets the ball go, about half a
 second before it crosses the line (`scripts/skillcorner_dead.py`), and the broadcast picture
 cuts away during stoppages, which leaves half of the dead-ball frames with no tracking at all.
 For those reasons the twenty matches are a check here and not training data. The labels are
@@ -292,7 +315,7 @@ tracking has a ball on 59.3% of the graded frames, both have one on 44.3%, and o
 has one on 3.7%. Where both see a ball the two are 0.8 metres apart in the middle, but more than
 five metres apart on 11% of those frames, so one of the two is following something else there.
 Filling the broadcast ball into the frames that have none (5,225 of them once positions off the
-pitch are left out) and labelling the match again changes 1.1% of the graded labels, in 97
+pitch are left out) and labelling the match again changes 1.1% of the graded labels, in 95
 stretches with a middle length of 0.2 seconds (`scripts/broadcast_try.py`). That is not in the
 submitted file. Whether those changes are right cannot be told on this match without labels, and
 no other match has a second recording to test the step on.
@@ -305,33 +328,33 @@ show here without a single label of the match.
 | From kick-off to the end of each half | The submitted file | Held-out matches |
 |---|---|---|
 | Frames with no tracked ball | 41% | 20 to 62% |
-| Of those, called dead ball | 90% | 44 to 93% |
+| Of those, called dead ball | 89% | 44 to 93% |
 | Frames with a tracked ball that are called dead ball | 15% | 10 to 45% |
 | Dead ball, share of all frames | 46% | 31 to 53% |
-| Possessions per minute of live play | 5.2 | 4.8 to 8.7 |
-| Median possession | 6.8 s | 4.3 to 7.8 s |
-| Possessions under three seconds | 21% | 20 to 35% |
-| Median stoppage | 18.2 s | 10.5 to 24.8 s |
+| Possessions per minute of live play | 5.1 | 4.8 to 8.7 |
+| Median possession | 6.8 s | 4.3 to 7.1 s |
+| Possessions under three seconds | 22% | 21 to 36% |
+| Median stoppage | 18.8 s | 10.5 to 24.9 s |
 
-The file has 294 possessions and 108 stoppages. It sits inside the validation range on every
+The file has 291 possessions and 107 stoppages. It sits inside the validation range on every
 total, at the low end for short possessions. On the held-out matches the method finds fewer
 possessions than there are (6.3 a minute against 7.8), and that is the bias to expect here too.
 
 **Pipeline check on the public five minutes**, final file: all four criteria pass (teams agree
-on 93% of the frames both call live; 16 possessions for 17; dead ball found on 81% of the
-dead frames that have a tracked ball and 73% of those that do not).
+on 92% of the frames both call live; 15 possessions for 17; dead ball found on 82% of the
+dead frames that have a tracked ball and 94% of those that do not).
 
 For completeness, every spellF1 read on that window, each on a finished file: 0.614
 (the first file, trained on merged labels), 0.578 (labels as given; the file that failed the
-dead-ball criterion), 0.759 (the new simulator and the tagged restarts) and 0.594 (the final
-file, which adds the weight on short possessions; its macroF1 there is 0.894). The last step
-was adopted on the ten other matches before its file was read here, and it was kept when the
-reading came out lower than the one before. The rules do not allow a version to be chosen on
-this window, and the window could not choose in any case: the organisers' own bootstrap over
-its 17 possessions (5th to 95th percentile of 1,000 resamples, printed by
-`scripts/pipeline_check.py`) gives 0.40 to 0.78 for the final file and 0.54 to 0.90 for the one
-before it, each reading inside the other's interval. One possession moves spellF1 there by
-about six points.
+dead-ball criterion), 0.759 (the new simulator and the tagged restarts), 0.594 (adds the weight
+on short possessions; macroF1 there 0.894) and 0.588 (the final file, six simulated recordings
+of every training half; macroF1 there 0.908). The last two steps were adopted on the ten other
+matches before their files were read here, and were kept when the readings came out lower than
+0.759. The rules do not allow a version to be chosen on this window, and the window could not
+choose in any case: the organisers' own bootstrap over its 17 possessions (5th to 95th
+percentile of 1,000 resamples, printed by `scripts/pipeline_check.py`) gives 0.39 to 0.76 for
+the final file and 0.54 to 0.90 for the 0.759 one, each reading inside the other's interval.
+One possession moves spellF1 there by about six points.
 
 ## 6. Limitations
 
@@ -380,7 +403,7 @@ The same file, byte for byte, was produced on Windows 11 (Python 3.12.13) and on
 (Python 3.12.3). The feature code uses only exact arithmetic (no transcendental functions and no
 linear-algebra library), so the result does not depend on the processor's maths library.
 
-The submitted file has SHA-256 `4684384a2d27b9b3641e79e8388e40e7537b63f27b8fa52c491caa4c66737b7b`.
+The submitted file has SHA-256 `c2e341a77b403bb6253bfda58799193aa1de95c34cce739a571ae523561d0c08`.
 
 Retraining from the public sources is documented in the README. It is not needed to reproduce
 the file.

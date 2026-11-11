@@ -54,7 +54,7 @@ The command prints the SHA-256 of the file it wrote and stores it in `Excensia.r
 together with the hashes of the inputs, the models and the package versions. The submitted file is
 
 ```
-sha256  4684384a2d27b9b3641e79e8388e40e7537b63f27b8fa52c491caa4c66737b7b
+sha256  c2e341a77b403bb6253bfda58799193aa1de95c34cce739a571ae523561d0c08
 ```
 
 Check any file before sending it:
