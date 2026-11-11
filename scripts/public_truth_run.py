@@ -39,8 +39,8 @@ def main():
     parser.add_argument("--page", default=None,
                         help="also write the viewer with this run built in, as one .html file")
     parser.add_argument("--viewer", default=os.path.join(ROOT, "viewer", "dist", "index.html"))
-    parser.add_argument("--every", type=int, default=5,
-                        help="keep one tracking sample in this many frames")
+    parser.add_argument("--every", type=int, default=1,
+                        help="keep one tracking sample and one camera matrix in this many frames")
     parser.add_argument("--margin", type=float, default=5.0,
                         help="seconds of the match kept before and after the labelled stretch")
     args = parser.parse_args()
@@ -58,11 +58,15 @@ def main():
 
     halves = competition.load_halves(args.data_dir)
     home, away = epts.read_team_names(competition.tactical_paths(args.data_dir)["meta"])
+    # the camera of the tactical video, so the viewer can draw the tracking on the picture
+    matrices, valid = competition.load_homography(args.data_dir)
+    camera = viewer_export.camera(matrices, valid, competition.PITCH, competition.VIDEO_SIZE,
+                                  start, stop, every=args.every)
     run = viewer_export.window(
         "{} v {}, first five minutes: the organisers' labels".format(home, away), home, away,
         truth, halves, start, stop, every=args.every,
         generator={"name": "organisers-public-ground-truth", "version": "more-than-a-hack-2027"},
-        period="First five minutes of play")
+        period="First five minutes of play", camera=camera)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     viewer_export.write(args.out, run)
@@ -75,6 +79,8 @@ def main():
     print("  {} frames ({:.0f} s), {} of them labelled, {} possessions".format(
         stop - start, (stop - start) / FPS, int(np.sum(inside != X)), len(spells)))
     print("  the video starts {:.1f} s in (video.offset_frames {})".format(start / FPS, start))
+    known = sum(1 for row in camera["pitch_to_image"] if row is not None)
+    print("  camera known on {} of {} kept frames".format(known, len(camera["pitch_to_image"])))
     print("  these are the organisers' labels; nothing here comes from the model")
     print("  this file holds match tracking: keep it on this machine")
 

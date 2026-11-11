@@ -184,6 +184,31 @@ try {
       );
     } else say(second.videos === 0, `no video is in the page (${second.videos})`);
     say(second.playing && seconds(second.clock) - seconds(first.clock) >= 3, `the clock is running: from ${first.clock} to ${second.clock} in four seconds`);
+    if (videoFile) {
+      // where the run has the video's camera, the evidence is drawn on the picture: say how many
+      // of the small pictures are (the label on the team-shape panel says which it is showing,
+      // and a picture cut from a football video is mostly grass)
+      const evidence = await page.evaluate(() => {
+        const grass = (canvas) => {
+          try {
+            const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+            let green = 0;
+            let total = 0;
+            for (let i = 0; i < data.length; i += 4 * 11, total++) if (data[i + 1] > data[i] + 10 && data[i + 1] > data[i + 2] + 10) green++;
+            return total ? green / total : 0;
+          } catch {
+            return -1;
+          }
+        };
+        return {
+          onFootage: document.querySelector(".shape__canvas")?.getAttribute("aria-label")?.includes("match video") ?? false,
+          tiles: [...document.querySelectorAll(".tile__canvas")].map(grass),
+        };
+      });
+      if (evidence.onFootage) {
+        say(evidence.tiles.length === 3 && evidence.tiles.every((share) => share > 0.25), `the ball close-up, team shape and runs are drawn on the video (grass share of each: ${evidence.tiles.map((share) => share.toFixed(2)).join(", ")})`);
+      } else console.log("      this run has no camera for its video, so the evidence stays drawn on a pitch");
+    }
   }
   say(second.visible, `the window is showing (${second.width}x${second.height} of a ${second.screenWidth}x${second.screenHeight} screen)${second.focused ? ", in front" : ", not in front yet"}`);
 } catch (error) {

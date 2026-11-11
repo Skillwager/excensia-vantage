@@ -29,11 +29,31 @@ VIDEO_WITHHELD = ("This is the test match of More than a Hack 2027. Its rules do
                   "these labels.")
 
 
+# DATA.md: the tactical video is 1920 by 1080, and the homography's pixels are that picture's.
+VIDEO_SIZE = (1920, 1080)
+
+
 def tactical_paths(data_dir):
     folder = os.path.join(data_dir, "tactical")
     stem = os.path.join(folder, "BAR-ATH_tactical")
     return {"meta": stem + "_atd.xml", "raw": stem + "_atd.txt",
             "tagging": stem + "_smart_tagging.xml", "homography": stem + "_homography.csv"}
+
+
+def load_homography(data_dir):
+    """(matrices, valid): the camera of the tactical video, one 3x3 matrix per video frame.
+
+    A matrix takes a pitch position in the tracking's own 0 to 1 units to the pixel that shows
+    it (DATA.md, "Homography"); where `valid` is false it is NaN. The method does not use this
+    file. It is read only to draw the provided tracking over the video in the viewer.
+    """
+    table = np.loadtxt(tactical_paths(data_dir)["homography"], delimiter=",", skiprows=1)
+    if len(table) != N_FRAMES or not np.array_equal(table[:, 0], np.arange(N_FRAMES)):
+        raise ValueError("the homography is not one row per video frame numbered from 0")
+    valid = table[:, 11] > 0
+    matrices = table[:, 1:10].reshape(-1, 3, 3)
+    matrices[~valid] = np.nan
+    return matrices, valid
 
 
 def load_halves(data_dir):

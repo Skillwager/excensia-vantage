@@ -72,6 +72,13 @@ export interface RunFile {
    * labels. A viewer that reads it opens no video for the match.
    */
   video?: { offset_frames: number; withheld?: string };
+  /**
+   * The camera of the match video: one matrix for every `every` frames, nine numbers row by row,
+   * taking a pitch position (x, y, 1) in metres from the centre spot to a pixel of a picture
+   * `size` wide and high; null where the camera is not known. With it the viewer draws the
+   * tracking on the video.
+   */
+  camera?: { size: [number, number]; every: number; pitch_to_image: (number[] | null)[] };
 }
 
 /* ───────────────────────── the viewer's own form ───────────────────────── */
@@ -133,6 +140,18 @@ export interface Tracking {
   away: Float32Array;
 }
 
+/** The camera of the match video, frame by frame. */
+export interface Camera {
+  /** Size in pixels of the picture the matrices are for. */
+  width: number;
+  height: number;
+  every: number;
+  /** Number of matrices. */
+  count: number;
+  /** count * 9 values, row by row: pitch metres (x, y, 1) to pixels. NaN where the camera is not known. */
+  matrix: Float64Array;
+}
+
 export type RunSource = "demo" | "file" | "blank";
 
 export interface Run {
@@ -158,6 +177,8 @@ export interface Run {
   videoOffset: number;
   /** Why this match's video may not be played beside these labels, or null when it may. */
   videoWithheld: string | null;
+  /** The camera of the match video, when the file has it. */
+  camera: Camera | null;
   /** True when the file itself carried spells (confidence, evidence). */
   hasSpellDetail: boolean;
   /** True when the file itself carried transitions (reasons). */

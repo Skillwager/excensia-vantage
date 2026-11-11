@@ -21,7 +21,12 @@ nothing else, and everything it has learned comes from **other** matches.
   with that match's video is the organisers' own public five minutes, since they allow
   inspecting the provided data and the video to understand what counts as possession:
   `scripts/public_truth_run.py` writes those labels as a page, and `node viewer/scripts/show.mjs
-  that-page.html --video=/path/to/tactical.mp4` plays the two together.
+  that-page.html --video=/path/to/tactical.mp4` plays the two together. That page also carries
+  the camera of the video (the provided homography), so the viewer draws the provided tracking
+  on the real picture: the ball close-up is cut from the video, and the teams' outlines and the
+  players' runs are drawn on it, in the small evidence pictures and on the large video.
+  `viewer/scripts/footage-check.mjs` proves the placing on a film made for the purpose, and
+  `viewer/scripts/footage-align.mjs` measures it on a real video in numbers only.
 
 ## Reproduce the submitted file
 

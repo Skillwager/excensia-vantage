@@ -1,11 +1,12 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { segmentAt } from "../model/derive";
 import { explain, type EvidenceKind } from "../model/explain";
-import { emptyMoment, sampleMoment, type Moment } from "../model/moment";
+import { emptyMoment, emptyTrails, readTrails, sampleMoment, type Moment } from "../model/moment";
 import { shapeIndex, shapesAt } from "../model/shape";
 import { formatClock, formatCount, formatPercent } from "../model/time";
 import { A, H, X, type Run } from "../model/types";
 import { cameraLookAt } from "../render/camera";
+import { drawBallFootage, drawShapeFootage, drawTimingFootage, footageAt } from "../render/footage";
 import { drawLabel } from "../render/labels";
 import { drawMatchView } from "../render/matchView";
 import { C, FONT_SANS, alpha } from "../render/palette";
@@ -55,15 +56,25 @@ function caption(ctx: CanvasRenderingContext2D, w: number, h: number, text: stri
 
 /** 1. The ball, close up: the same picture as the match view, magnified around the ball. */
 function BallTile() {
-  const { playback, run } = useApp();
+  const { playback, run, videoUrl } = useApp();
   const moment = useMemo(() => emptyMoment(run.tracking), [run]);
   const earlier = useMemo(() => emptyMoment(run.tracking), [run]);
   const keepers = useMemo<[number, number]>(() => shapeIndex(run)?.keepers ?? [-1, -1], [run]);
+  const matrix = useMemo(() => new Float64Array(9), []);
   const ref = useCanvas(
     playback,
     (ctx, size, frame) => {
       const tracking = run.tracking;
       if (!tracking) return emptyTile(ctx, size.width, size.height, "No tracking");
+      // with the match video and its camera, the close-up is cut out of the real picture
+      const footage = videoUrl ? footageAt(playback, run, frame, matrix) : null;
+      if (footage) {
+        sampleMoment(tracking, footage.frame, run.fps, moment);
+        if (moment.has && drawBallFootage(ctx, size.width, size.height, footage, moment, focusOf(moment))) {
+          if (!moment.ballSeen) caption(ctx, size.width, size.height, "BALL NOT TRACKED", alpha(C.lime, 0.95));
+          return;
+        }
+      }
       sampleMoment(tracking, Math.max(0, frame - run.fps * 0.125), run.fps, earlier);
       sampleMoment(tracking, frame, run.fps, moment);
       if (!moment.has) return emptyTile(ctx, size.width, size.height, "No tracking here");
@@ -87,20 +98,27 @@ function BallTile() {
       );
       if (!moment.ballSeen) caption(ctx, size.width, size.height, "BALL HIDDEN", alpha(C.lime, 0.95));
     },
-    [run],
+    [run, videoUrl],
   );
   return <canvas ref={ref} className="tile__canvas" role="img" aria-label="The ball, close up" />;
 }
 
 /** 2. Both teams' outlines on the whole pitch. */
 function ShapeTile() {
-  const { playback, run } = useApp();
+  const { playback, run, videoUrl } = useApp();
   const moment = useMemo(() => emptyMoment(run.tracking), [run]);
+  const matrix = useMemo(() => new Float64Array(9), []);
   const ref = useCanvas(
     playback,
     (ctx, size, frame) => {
       const tracking = run.tracking;
       if (!tracking) return emptyTile(ctx, size.width, size.height, "No tracking");
+      // with the match video and its camera, the outlines are drawn on the real picture
+      const footage = videoUrl ? footageAt(playback, run, frame, matrix) : null;
+      if (footage) {
+        sampleMoment(tracking, footage.frame, run.fps, moment);
+        if (moment.has && drawShapeFootage(ctx, size.width, size.height, footage, moment, shapesAt(run, moment, footage.frame))) return;
+      }
       sampleMoment(tracking, frame, run.fps, moment);
       const shapes = shapesAt(run, moment, frame);
       // frame the two teams rather than the whole pitch, so the outlines are large enough to read
@@ -124,30 +142,16 @@ function ShapeTile() {
       drawCentreTop(ctx, lay, shapes.home, C.home, 4);
       drawCentreTop(ctx, lay, shapes.away, C.away, 4);
     },
-    [run],
+    [run, videoUrl],
   );
   return <canvas ref={ref} className="tile__canvas" role="img" aria-label="Both teams' shape on the pitch" />;
 }
 
-const TRAIL_SECONDS = 3;
-const TRAIL_STEPS = 9;
-
 /** 3. The seconds before and after: where the ball and the players near it came from and go next. */
 function TimingTile() {
-  const { playback, run } = useApp();
-  const buffers = useMemo(() => {
-    const total = TRAIL_STEPS * 2 + 1;
-    const homeSlots = run.tracking?.homeSlots ?? 0;
-    const awaySlots = run.tracking?.awaySlots ?? 0;
-    return {
-      now: emptyMoment(run.tracking),
-      then: emptyMoment(run.tracking),
-      home: new Float32Array(total * homeSlots * 2),
-      away: new Float32Array(total * awaySlots * 2),
-      ball: new Float32Array(total * 2),
-      valid: new Uint8Array(total),
-    };
-  }, [run]);
+  const { playback, run, videoUrl } = useApp();
+  const buffers = useMemo(() => ({ now: emptyMoment(run.tracking), ...emptyTrails(run.tracking) }), [run]);
+  const matrix = useMemo(() => new Float64Array(9), []);
   const ref = useCanvas(
     playback,
     (ctx, size, frame) => {
@@ -163,32 +167,42 @@ function TimingTile() {
         ctx.fillRect(Math.round(w / 2) - 1, h / 2 - 11, 2, 22);
         return;
       }
-      const { now, then } = buffers;
-      sampleMoment(tracking, frame, run.fps, now);
+      const { now } = buffers;
+      // with the match video and its camera, the runs are drawn on the real picture
+      const footage = videoUrl ? footageAt(playback, run, frame, matrix) : null;
+      const at = footage ? footage.frame : frame;
+      sampleMoment(tracking, at, run.fps, now);
       if (!now.has) return emptyTile(ctx, w, h, "No tracking here");
       const focus = focusOf(now);
+
+      // read the three seconds either side once
+      readTrails(tracking, run.fps, run.frames - 1, at, buffers);
+      const TRAIL_STEPS = buffers.steps;
+
+      const strip = () => {
+        // the labels ten seconds either side, with now in the middle
+        paintMiniStrip(ctx, 0, h - stripH, w, stripH, dpr, run, frame - window, frame + window);
+        ctx.fillStyle = "rgba(8, 10, 11, 0.6)";
+        ctx.fillRect(Math.round(w / 2) - 2, h - stripH - 3, 4, stripH + 3);
+        ctx.fillStyle = C.lime;
+        ctx.fillRect(Math.round(w / 2) - 1, h - stripH - 3, 2, stripH + 3);
+      };
+      if (footage) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, w, h - stripH);
+        ctx.clip();
+        const drawn = drawTimingFootage(ctx, w, h - stripH, footage, now, focus, buffers, tracking.homeSlots, tracking.awaySlots);
+        ctx.restore();
+        if (drawn) return strip();
+      }
+
       const lay = zoomPitch(w, h - stripH, run.pitch, focus.x, focus.y, 46);
       ctx.save();
       ctx.beginPath();
       ctx.rect(0, 0, w, h - stripH);
       ctx.clip();
       drawPitchTop(ctx, w, h - stripH, lay, 0.45);
-
-      // read the three seconds either side once
-      const step = (TRAIL_SECONDS * run.fps) / TRAIL_STEPS;
-      const total = TRAIL_STEPS * 2 + 1;
-      for (let k = 0; k < total; k++) {
-        const f = frame + (k - TRAIL_STEPS) * step;
-        buffers.valid[k] = 0;
-        if (f < 0 || f > run.frames - 1) continue;
-        sampleMoment(tracking, f, run.fps, then);
-        if (!then.has) continue;
-        buffers.valid[k] = 1;
-        buffers.home.set(then.home, k * then.home.length);
-        buffers.away.set(then.away, k * then.away.length);
-        buffers.ball[k * 2] = then.ballSeen ? then.ballX : NaN;
-        buffers.ball[k * 2 + 1] = then.ballSeen ? then.ballY : NaN;
-      }
 
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
@@ -241,23 +255,16 @@ function TimingTile() {
       drawPlayersTop(ctx, lay, now, { labels: false, keepers: [-1, -1], homeSlots: tracking.homeSlots, radius: 3, width: w });
       drawBallTop(ctx, lay, now, { radius: 2.4, caption: false, maxDoubt: 5 });
       ctx.restore();
-
-      // the labels ten seconds either side, with now in the middle
-      paintMiniStrip(ctx, 0, h - stripH, w, stripH, dpr, run, frame - window, frame + window);
-      ctx.fillStyle = "rgba(8, 10, 11, 0.6)";
-      ctx.fillRect(Math.round(w / 2) - 2, h - stripH - 3, 4, stripH + 3);
-      ctx.fillStyle = C.lime;
-      ctx.fillRect(Math.round(w / 2) - 1, h - stripH - 3, 2, stripH + 3);
+      strip();
     },
-    [run],
+    [run, videoUrl],
   );
   return <canvas ref={ref} className="tile__canvas" role="img" aria-label="The three seconds before and after" />;
 }
 
 /** Why the model made this call: the estimate, how sure it is, and the evidence behind it. */
 export function Inspector() {
-  const { playback, run } = useApp();
-  const [kind, setKind] = useState<EvidenceKind>("ball");
+  const { playback, run, evidence: kind, setEvidence: setKind } = useApp();
   // re-read once a second while playing, on every frame while stepping, and whenever the ball appears or disappears
   usePlayback(playback, (p) => {
     const f = Math.floor(p.frame);
@@ -309,7 +316,7 @@ export function Inspector() {
       <div className="insp__body">
         <div className="insp__call">
           <p className="insp__estimate">
-            <span className="insp__estimate-key">Model estimate:</span> <span className={`insp__estimate-value insp__estimate-value--${tone}`}>{text.estimate}</span>
+            <span className="insp__estimate-key">{run.hasSpellDetail ? "Model estimate:" : "Label:"}</span> <span className={`insp__estimate-value insp__estimate-value--${tone}`}>{text.estimate}</span>
           </p>
           <div className={unsure ? "conf conf--unsure" : "conf"} title={confidence === null ? "This run gives no confidence for this call" : undefined}>
             <span className="conf__label">Confidence</span>

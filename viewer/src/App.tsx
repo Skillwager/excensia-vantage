@@ -10,6 +10,7 @@ import { TeamShapeTab } from "./components/TeamShapeTab";
 import { exportFileName, validateExport } from "./model/csv";
 import { demoRun } from "./model/demo";
 import { runsOf } from "./model/derive";
+import type { EvidenceKind } from "./model/explain";
 import { blankRun, parseRunFile, RunFileError, toRunFile } from "./model/loader";
 import type { DemoScene, Run } from "./model/types";
 import { resetLabelSprites } from "./render/labels";
@@ -112,6 +113,7 @@ export function App() {
   const link = useMemo(readLink, []);
   const startWhenReady = useRef(link.play);
   const [tab, setTab] = useState<TabId>(link.tab ?? "possession");
+  const [evidence, setEvidence] = useState<EvidenceKind>("ball");
   const [settings, setSettingsState] = useState<ViewSettings>({ labels: true, follow: true, outlines: true });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [exported, setExported] = useState<ExportResult | null>(null);
@@ -431,6 +433,8 @@ export function App() {
     setSettings: (patch) => setSettingsState((current) => ({ ...current, ...patch })),
     tab,
     setTab,
+    evidence,
+    setEvidence,
     goTo: (frame, nextTab) => {
       playback.pause();
       playback.seek(frame);

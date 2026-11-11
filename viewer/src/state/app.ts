@@ -1,4 +1,5 @@
 import { createContext, useContext } from "react";
+import type { EvidenceKind } from "../model/explain";
 import type { DemoScene, Run } from "../model/types";
 import type { TimelineView } from "../render/timeline";
 import type { Playback } from "./playback";
@@ -25,6 +26,9 @@ export interface AppState {
   setSettings: (patch: Partial<ViewSettings>) => void;
   tab: TabId;
   setTab: (tab: TabId) => void;
+  /** The kind of evidence picked in the inspector. With a video and its camera it is also drawn on the video. */
+  evidence: EvidenceKind;
+  setEvidence: (kind: EvidenceKind) => void;
   /** Moves to a frame, optionally opening a tab, and stops there. */
   goTo: (frame: number, tab?: TabId) => void;
   pickRunFile: () => void;

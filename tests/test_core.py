@@ -398,3 +398,26 @@ def test_a_window_run_starts_the_video_where_the_window_starts():
     assert "spells" not in run and "transitions" not in run
     with pytest.raises(ValueError):
         viewer_export.window("Toy", "Reds", "Blues", labels, [half], 1200, 1400)
+
+
+def test_the_camera_takes_metres_from_the_centre_spot_to_the_same_pixel():
+    # one matrix in the organisers' 0 to 1 units, a second frame with no camera
+    matrix = np.array([[1800.0, -500.0, 40.0], [2.0, 170.0, 250.0], [-0.02, -0.5, 1.0]])
+    matrices = np.stack([matrix, np.full((3, 3), np.nan), matrix * 2.0])
+    valid = np.array([True, False, True])
+    pitch = (105.0, 68.0)
+    out = viewer_export.camera(matrices, valid, pitch, (1920, 1080), 0, 3)
+    assert out["size"] == [1920, 1080] and out["every"] == 1
+    assert out["pitch_to_image"][1] is None
+
+    def pixel(m, x, y):
+        m = np.asarray(m).reshape(3, 3)
+        u, v, w = m @ np.array([x, y, 1.0])
+        return u / w, v / w
+
+    for x_unit, y_unit in ((0.5, 0.5), (0.0, 0.0), (1.0, 0.25), (0.3, 0.9)):
+        metres = ((x_unit - 0.5) * pitch[0], (y_unit - 0.5) * pitch[1])
+        want = pixel(matrix, x_unit, y_unit)
+        for kept in (out["pitch_to_image"][0], out["pitch_to_image"][2]):
+            assert kept[8] == 1.0
+            assert pixel(kept, *metres) == pytest.approx(want, rel=1e-5)

@@ -161,14 +161,44 @@ def build(title, home, away, labels, halves, states, evidence=None, every=5, per
     }
 
 
-def window(title, home, away, labels, halves, start, stop, every=5, generator=None, period=None):
+def camera(matrices, valid, pitch, size, start, stop, every=1):
+    """The camera of a video for a run file: where a pitch position is in the picture.
+
+    matrices  (N, 3, 3), one per video frame, taking a pitch position in 0 to 1 units to a pixel
+    valid     (N,) false where there is no matrix
+    pitch     (length, width) in metres
+    size      (width, height) of the picture in pixels
+
+    The run file's positions are metres from the centre spot, so each matrix is first combined
+    with that change of units, then scaled so that its last entry is 1. One matrix is kept for
+    every `every` frames of [start, stop), null where the camera is not known.
+    """
+    length, width = float(pitch[0]), float(pitch[1])
+    units = np.array([[1.0 / length, 0.0, 0.5], [0.0, 1.0 / width, 0.5], [0.0, 0.0, 1.0]])
+    rows = []
+    for frame in range(int(start), int(stop), int(every)):
+        if not valid[frame]:
+            rows.append(None)
+            continue
+        matrix = matrices[frame] @ units
+        scale = matrix[2, 2]
+        if not np.isfinite(matrix).all() or scale == 0.0:
+            rows.append(None)
+            continue
+        rows.append([float("{:.7g}".format(value)) for value in (matrix / scale).ravel()])
+    return {"size": [int(size[0]), int(size[1])], "every": int(every), "pitch_to_image": rows}
+
+
+def window(title, home, away, labels, halves, start, stop, every=5, generator=None, period=None,
+           camera=None):
     """A run file of one stretch of a match, video frames [start, stop), with labels that are
     given and nothing from a model: no confidence and no evidence.
 
     Frame 0 of the run is video frame `start`; the file says so in video.offset_frames, and a
     viewer playing the video beside it starts the video there. Made for the organisers' public
     five minutes: their labels and the provided tracking, to be watched with the video in order
-    to see what counts as possession (scripts/public_truth_run.py).
+    to see what counts as possession (scripts/public_truth_run.py). `camera` is what `camera()`
+    returns for the same stretch; with it the viewer can draw the tracking on the video.
     """
     start, stop = int(start), int(stop)
     if not 0 <= start < stop <= len(labels):
@@ -199,7 +229,7 @@ def window(title, home, away, labels, halves, start, stop, every=5, generator=No
     if len(known):
         periods.append({"name": period or "Labelled", "start": int(known[0]),
                         "end": int(known[-1])})
-    return {
+    run = {
         "schema": SCHEMA,
         "generator": generator or {"name": "excensia-vantage", "version": __version__},
         "match": {"title": title, "home": {"name": home}, "away": {"name": away}, "fps": FPS,
@@ -210,6 +240,9 @@ def window(title, home, away, labels, halves, start, stop, every=5, generator=No
         "tracking": {"every": int(every), "samples": samples},
         "video": {"offset_frames": start},
     }
+    if camera is not None:
+        run["camera"] = camera
+    return run
 
 
 def write(path, run):

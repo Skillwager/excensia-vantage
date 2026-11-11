@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
-import { emptyMoment, sampleMoment } from "../model/moment";
-import { shapeIndex } from "../model/shape";
+import { emptyMoment, emptyTrails, readTrails, sampleMoment } from "../model/moment";
+import { shapeIndex, shapesAt } from "../model/shape";
 import { formatClock } from "../model/time";
 import { cameraLookAt } from "../render/camera";
+import { drawEvidenceOnVideo, footageAt } from "../render/footage";
 import { drawMatchView } from "../render/matchView";
 import { useApp } from "../state/app";
 import { useCanvas, usePlayback } from "../state/hooks";
@@ -62,6 +63,45 @@ function MatchVideo({ url }: { url: string }) {
   return <video ref={ref} className="match__media" src={url} playsInline preload="auto" onClick={() => playback.toggle()} />;
 }
 
+/**
+ * What the inspector is showing, drawn on the video itself: a ring round the ball, the teams'
+ * outlines, or the runs of the seconds before and after. It needs the camera of the video,
+ * which a run file may carry; without it nothing is drawn over the picture.
+ */
+function EvidenceOnVideo() {
+  const { playback, run, evidence } = useApp();
+  const moment = useMemo(() => emptyMoment(run.tracking), [run]);
+  const trails = useMemo(() => emptyTrails(run.tracking), [run]);
+  const matrix = useMemo(() => new Float64Array(9), []);
+  const canvasRef = useCanvas(
+    playback,
+    (ctx, size, frame) => {
+      ctx.clearRect(0, 0, size.width, size.height);
+      const tracking = run.tracking;
+      if (!tracking) return;
+      const footage = footageAt(playback, run, frame, matrix);
+      if (!footage) return;
+      sampleMoment(tracking, footage.frame, run.fps, moment);
+      if (!moment.has) return;
+      if (evidence === "timing") readTrails(tracking, run.fps, run.frames - 1, footage.frame, trails);
+      drawEvidenceOnVideo(
+        ctx,
+        size.width,
+        size.height,
+        footage,
+        evidence,
+        moment,
+        evidence === "shape" ? shapesAt(run, moment, footage.frame) : null,
+        evidence === "timing" ? trails : null,
+        tracking.homeSlots,
+        tracking.awaySlots,
+      );
+    },
+    [run, evidence],
+  );
+  return <canvas ref={canvasRef} className="match__overlay" aria-hidden="true" />;
+}
+
 /** The match itself: the video when one is loaded, otherwise the match drawn from its tracking. */
 export function MatchPanel() {
   const { playback, run, scene, videoUrl, pickVideo } = useApp();
@@ -83,7 +123,10 @@ export function MatchPanel() {
   return (
     <section className="match" aria-label="Match view">
       {videoUrl ? (
-        <MatchVideo url={videoUrl} />
+        <>
+          <MatchVideo url={videoUrl} />
+          {run.camera && run.tracking ? <EvidenceOnVideo /> : null}
+        </>
       ) : drawn ? (
         <DrawnMatch />
       ) : (

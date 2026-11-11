@@ -240,3 +240,51 @@ export function sampleMoment(tracking: Tracking | null, frame: number, fps: numb
   out.doubt = Math.min(9, 1.6 + 1.1 * nearest);
   return out;
 }
+
+/** How far back and ahead the trails go, and in how many steps each way. */
+export const TRAIL_SECONDS = 3;
+export const TRAIL_STEPS = 9;
+
+/** Positions over the seconds either side of a frame, for drawing where everyone came from and goes next. */
+export interface Trails {
+  /** Moments kept each side of now. */
+  steps: number;
+  /** (2 * steps + 1) moments of positions, the middle one being now. */
+  home: Float32Array;
+  away: Float32Array;
+  /** The ball where it was seen, NaN where it was not. */
+  ball: Float32Array;
+  valid: Uint8Array;
+  /** Working space. */
+  then: Moment;
+}
+
+export function emptyTrails(tracking: Tracking | null, steps = TRAIL_STEPS): Trails {
+  const total = steps * 2 + 1;
+  return {
+    steps,
+    home: new Float32Array(total * (tracking?.homeSlots ?? 0) * 2),
+    away: new Float32Array(total * (tracking?.awaySlots ?? 0) * 2),
+    ball: new Float32Array(total * 2),
+    valid: new Uint8Array(total),
+    then: emptyMoment(tracking),
+  };
+}
+
+/** Reads `seconds` either side of frame `at` into `out`. `last` is the last frame of the match. */
+export function readTrails(tracking: Tracking, fps: number, last: number, at: number, out: Trails, seconds = TRAIL_SECONDS): void {
+  const step = (seconds * fps) / out.steps;
+  const total = out.steps * 2 + 1;
+  for (let k = 0; k < total; k++) {
+    const f = at + (k - out.steps) * step;
+    out.valid[k] = 0;
+    if (f < 0 || f > last) continue;
+    sampleMoment(tracking, f, fps, out.then);
+    if (!out.then.has) continue;
+    out.valid[k] = 1;
+    out.home.set(out.then.home, k * out.then.home.length);
+    out.away.set(out.then.away, k * out.then.away.length);
+    out.ball[k * 2] = out.then.ballSeen ? out.then.ballX : NaN;
+    out.ball[k * 2 + 1] = out.then.ballSeen ? out.then.ballY : NaN;
+  }
+}

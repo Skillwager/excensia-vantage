@@ -1,6 +1,7 @@
 import { buildChanges, buildSegments, indexRuns, isLabelCode, labelOf, lowerIndex, mergeRuns } from "./derive";
 import {
   RUN_SCHEMA,
+  type Camera,
   type Label,
   type LabelRun,
   type Period,
@@ -293,6 +294,33 @@ function checkTracking(raw: unknown, frames: number): Tracking | null {
   return { every, count, homeSlots, awaySlots, ball, home, away };
 }
 
+function checkCamera(raw: unknown, frames: number): Camera | null {
+  if (raw === undefined || raw === null) return null;
+  if (!isObject(raw)) fail('"camera" should be an object with "size", "every" and "pitch_to_image".');
+  const size = raw.size;
+  if (!Array.isArray(size) || size.length !== 2 || !isFiniteNumber(size[0]) || !isFiniteNumber(size[1]) || size[0] <= 0 || size[1] <= 0) {
+    fail("camera.size should be the width and height of the video in pixels, such as [1920, 1080].");
+  }
+  const every = raw.every;
+  if (!isWhole(every) || every <= 0) fail(`camera.every should be a whole number of frames above 0. Got ${show(every)}.`);
+  const rows = raw.pitch_to_image;
+  if (!Array.isArray(rows)) fail("camera.pitch_to_image should be a list of matrices.");
+  if (rows.length === 0) return null;
+  const needed = Math.ceil(frames / every);
+  if (rows.length > needed + 1) {
+    fail(`The camera has ${fmt(rows.length)} matrices, but a match of ${fmt(frames)} frames only needs ${fmt(needed)} (one every ${fmt(every)} frames).`);
+  }
+  const count = Math.min(rows.length, needed);
+  const matrix = new Float64Array(count * 9).fill(NaN);
+  for (let i = 0; i < count; i++) {
+    const row: unknown = rows[i];
+    if (row === null) continue;
+    if (!Array.isArray(row) || row.length !== 9 || !row.every(isFiniteNumber)) fail(`Camera matrix ${fmt(i)} should be nine numbers, or null where the camera is not known.`);
+    for (let k = 0; k < 9; k++) matrix[i * 9 + k] = row[k] as number;
+  }
+  return { width: size[0], height: size[1], every, count, matrix };
+}
+
 /* ───────────────────────── building ───────────────────────── */
 
 /** Share of a stretch of frames (end inclusive) in which tracking saw the ball, or null without tracking. */
@@ -314,6 +342,7 @@ export interface RunParts {
   tracking: Tracking | null;
   videoOffset: number;
   videoWithheld: string | null;
+  camera: Camera | null;
   generator: { name: string; version: string } | null;
 }
 
@@ -346,6 +375,7 @@ export function buildRun(parts: RunParts, source: RunSource, fileName: string | 
     tracking,
     videoOffset: parts.videoOffset,
     videoWithheld: parts.videoWithheld,
+    camera: parts.camera,
     hasSpellDetail: (parts.spells?.length ?? 0) > 0,
     hasChangeDetail: (parts.transitions?.length ?? 0) > 0,
   };
@@ -393,7 +423,9 @@ export function checkRunFile(json: unknown): Omit<RunParts, "tracking"> & { rawT
     }
   }
 
-  return { match, labels, spells, transitions, videoOffset, videoWithheld, generator, rawTracking: json.tracking };
+  const camera = checkCamera(json.camera, match.frames);
+
+  return { match, labels, spells, transitions, videoOffset, videoWithheld, camera, generator, rawTracking: json.tracking };
 }
 
 /** Opens a parsed run file. Throws RunFileError with a readable message when the file is not right. */
@@ -425,6 +457,7 @@ export function blankRun(frames: number, fps: number, title: string): Run {
       tracking: null,
       videoOffset: 0,
       videoWithheld: null,
+      camera: null,
       generator: null,
     },
     "blank",
@@ -488,6 +521,14 @@ export function toRunFile(run: Run): RunFile {
     file.tracking = { every: t.every, samples };
   }
   file.video = run.videoWithheld ? { offset_frames: run.videoOffset, withheld: run.videoWithheld } : { offset_frames: run.videoOffset };
+  const camera = run.camera;
+  if (camera) {
+    const rows: (number[] | null)[] = new Array(camera.count);
+    for (let i = 0; i < camera.count; i++) {
+      rows[i] = camera.matrix[i * 9] === camera.matrix[i * 9] ? Array.from(camera.matrix.subarray(i * 9, i * 9 + 9)) : null;
+    }
+    file.camera = { size: [camera.width, camera.height], every: camera.every, pitch_to_image: rows };
+  }
   return file;
 }
 

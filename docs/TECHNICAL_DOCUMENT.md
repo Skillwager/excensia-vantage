@@ -61,7 +61,7 @@ output on any machine, which the reproduction rule needs.
 | Smart Tagging: phases | A light vote for the team, added before decoding, from the four attacking phases only (build up, progression, creating chances, attacking transition). One tag is worth a fixed total of 3 in log-odds however long it is; that weight is a reasoned constant, because no other match has these tags to tune it on. A label-free check (`scripts/tag_check.py`) decided what votes. The phases are tagged where the ball is tracked (it is missing on 7% of their frames against 41% overall), so they add little where help is needed; on live frames they agree with tracking-only labels 92 to 98% of the time for build up and progression. The defending-phase tags repeat the attacking ones interval for interval and are not counted twice. Ball in final third, ball in the box, players in the box and long ball run through stoppages and through the other team's possession and are not used. |
 | Published constants | The graded frame ranges, the second-half kick-off frame and the fact that the graded frames before it are dead ball (DATA.md, FAQ.md). Ungraded frames are written `X`. |
 | Public 5-minute ground truth | Used to read the definition and to check the pipeline, as CHALLENGE.md and EVALUATION.md ask. No number was fitted to it, and no version was chosen by its score. The full account is below the table. |
-| Homography, tactical video | Not used. The viewer in this repository shows this match drawn from its tracking and opens no video beside it (see "How the provided match was handled"). |
+| Homography, tactical video | Not used by the method. The viewer in this repository shows the method's output drawn from the tracking and opens no video beside it. For the organisers' public five minutes it plays the tactical video with their labels, and uses the homography to draw the provided tracking on the picture (see "How the provided match was handled"). |
 | Broadcast video, tracking and homography | Not used. Aligning its timeline to the tactical one was considered as a way to recover the ball while the tactical tracker has lost it, and left out for lack of a way to validate it on other matches. |
 
 **What the public five minutes were used for, in full.** Three things were learned from them,
@@ -122,8 +122,12 @@ tracking, and nothing is changed because of that either.
 
 The team has also watched the tactical video, on its own and with the organisers' public five
 minutes of labels over it (`scripts/public_truth_run.py` writes those labels as a file for the
-viewer), to see what the labels mean, which the clarification allows. The model's output was not
-on the screen with the video, and nothing in the method was changed because of what was watched.
+viewer), to see what the labels mean, which the clarification allows. On that page the viewer
+draws the provided tracking on the picture through the provided homography: a ring round the
+tracked ball, the two teams' outlines, the players' runs. An automatic check
+(`viewer/scripts/footage-align.mjs`) confirmed in numbers, with nobody looking, that tracking,
+homography and video are in step to the frame. The model's output was not on the screen with the
+video, and nothing in the method was changed because of what was watched.
 
 **AI assistance.** The code and this document were written with a hosted AI coding assistant
 (Claude). The tracking rows, tags, homography and video of the match were kept out of its
@@ -133,10 +137,15 @@ window or all the tags of one kind, never frames. The scripts are in `scripts/` 
 same totals for anyone who runs them. The finest things it saw are the share of each of the four
 public stoppages that has a tracked ball, and how far the two kick-off tags start before the
 published kick-off frames (3.52 and 3.28 seconds). Of the video it saw the length and the frame
-size, from the clock comparison reported above. One exception, before the team had read that
-rule: a file search on a cloud drive returned to the assistant the opening lines, about a
+size, from the clock comparison reported above. Two exceptions. Before the team had read that
+rule, a file search on a cloud drive returned to the assistant the opening lines, about a
 thousand characters each, of the two tracking metadata files, and the bundle's README. They
 describe the file layout, and the method takes nothing from them that DATA.md does not publish.
+And on 10 November a team member, asking for a change to the viewer's display, pasted into the
+assistant's chat one screenshot of the viewer on the public five minutes: one frame of the
+tactical video, the tracked positions at that moment and the timeline of the organisers' public
+labels. That is provided data reaching an AI service, which the rules do not allow. It was one
+frame, it was not asked for, and nothing in the method came from it.
 
 ## 3. Training data
 

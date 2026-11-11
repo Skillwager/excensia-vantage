@@ -170,6 +170,21 @@ describe("loading a run file", () => {
     expect(Array.from(run.runStart)).toEqual([0, 3]); // neighbouring runs of one label are joined
   });
 
+  it("reads the camera of the match video, and writes it back", () => {
+    const one = [10, 0, 960, 0, 10, 540, 0, 0, 1];
+    const file = { schema: "excensia.vantage.run/1", match: { home: { name: "Reds" }, away: { name: "Blues" }, fps: 25, frames: 12 }, labels: [["H", 12]], camera: { size: [1920, 1080], every: 5, pitch_to_image: [one, null, one] } };
+    const run = loadRunFile(file);
+    expect(run.camera).not.toBeNull();
+    expect([run.camera!.width, run.camera!.height, run.camera!.every, run.camera!.count]).toEqual([1920, 1080, 5, 3]);
+    expect(Array.from(run.camera!.matrix.subarray(0, 9))).toEqual(one);
+    expect(Number.isNaN(run.camera!.matrix[9])).toBe(true);
+    expect(toRunFile(run).camera).toEqual(file.camera);
+    expect(loadRunFile({ ...file, camera: undefined }).camera).toBeNull();
+    expect(() => loadRunFile({ ...file, camera: { ...file.camera, pitch_to_image: [[1, 2, 3]] } })).toThrow(/nine numbers/);
+    expect(() => loadRunFile({ ...file, camera: { ...file.camera, size: [0, 1080] } })).toThrow(/camera\.size/);
+    expect(() => loadRunFile({ ...file, camera: { ...file.camera, pitch_to_image: new Array(9).fill(one) } })).toThrow(/only needs 3/);
+  });
+
   it("reads that a match's video is withheld, and writes it back", () => {
     const why = "The rules of this match do not allow its video beside the labels.";
     const file = { schema: "excensia.vantage.run/1", match: { home: { name: "Reds" }, away: { name: "Blues" }, fps: 25, frames: 4 }, labels: [["H", 4]], video: { offset_frames: 0, withheld: `  ${why} ` } };

@@ -1289,6 +1289,7 @@ export function generateDemo(seed: number = DEMO_SEED): DemoMatch {
     tracking,
     videoOffset: 0,
     videoWithheld: null,
+    camera: null,
     generator: { name: "excensia-vantage", version: "0.1.0" },
   };
   return { parts, scene: { goals: sim.goals } };

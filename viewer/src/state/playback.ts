@@ -104,14 +104,27 @@ export class Playback {
 
   attachVideo(video: HTMLVideoElement | null): void {
     if (this.video === video) return;
-    if (this.video && this.playing) this.video.pause();
+    if (this.video) {
+      if (this.playing) this.video.pause();
+      this.video.removeEventListener("seeked", this.invalidate);
+      this.video.removeEventListener("loadeddata", this.invalidate);
+    }
     this.video = video;
     if (video) {
+      // canvases that draw from the video repaint once the picture asked for is there
+      video.addEventListener("seeked", this.invalidate);
+      video.addEventListener("loadeddata", this.invalidate);
       video.playbackRate = this.speed;
       this.syncVideo();
       if (this.playing) void video.play().catch(() => this.pause());
     }
     this.invalidate();
+  }
+
+  /** The video, once there is a picture to draw from it; null otherwise. */
+  picture(): HTMLVideoElement | null {
+    const video = this.video;
+    return video && video.readyState >= 2 && video.videoWidth > 0 ? video : null;
   }
 
   private activeVideo(): HTMLVideoElement | null {
