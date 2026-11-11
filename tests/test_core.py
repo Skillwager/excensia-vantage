@@ -5,7 +5,7 @@ import os
 import numpy as np
 import pytest
 
-from vantage import A, D, H, X, competition, epts, evaluate, tagging, viewer_export
+from vantage import A, D, H, X, anymatch, competition, epts, evaluate, tagging, viewer_export
 from vantage import decode as decoding
 from vantage.features import build
 from vantage.half import Half
@@ -421,3 +421,51 @@ def test_the_camera_takes_metres_from_the_centre_spot_to_the_same_pixel():
         for kept in (out["pitch_to_image"][0], out["pitch_to_image"][2]):
             assert kept[8] == 1.0
             assert pixel(kept, *metres) == pytest.approx(want, rel=1e-5)
+
+
+
+# -- any match's tracking ------------------------------------------------------------------------
+
+def test_tracking_at_another_rate_is_brought_to_25_a_second_without_inventing_positions():
+    # 50 a second: every other sample is kept
+    fast = np.arange(20, dtype=np.float32).reshape(10, 2)
+    assert np.array_equal(anymatch.resample(fast, 50), fast[::2])
+    # 12.5 a second: a sample is added half-way between two, and a gap is not bridged
+    slow = np.array([[0.0, 0.0], [2.0, 4.0], [np.nan, np.nan], [6.0, 6.0]], dtype=np.float32)
+    out = anymatch.resample(slow, 12.5)
+    assert len(out) == 7
+    assert np.array_equal(out[0], [0.0, 0.0]) and np.array_equal(out[1], [1.0, 2.0])
+    assert np.array_equal(out[2], [2.0, 4.0]) and np.array_equal(out[3], [2.0, 4.0])
+    assert np.isnan(out[4]).all() and np.array_equal(out[5], [6.0, 6.0])
+
+
+def test_any_tracking_becomes_halves_with_the_home_team_attacking_the_same_way(tmp_path):
+    frames = 100
+    home = np.zeros((frames, 3, 2), dtype=np.float32)
+    away = np.zeros((frames, 3, 2), dtype=np.float32)
+    home[:, :, 0] = [30.0, 20.0, 10.0]      # the home team sits in the +x half: it attacks -x
+    away[:, :, 0] = [-30.0, -20.0, -10.0]
+    ball = np.zeros((frames, 2), dtype=np.float32)
+    ball[:, 0] = 5.0
+    camera = np.tile(np.array([[10.0, 0.0, 960.0], [0.0, 10.0, 540.0], [0.0, 0.0, 1.0]]),
+                     (frames, 1, 1))
+    path = tmp_path / "match.npz"
+    np.savez(path, fps=25.0, pitch=np.array([100.0, 60.0]), home=home, away=away, ball=ball,
+             periods=np.array([[10, 89]]), camera=camera, camera_size=np.array([1920, 1080]),
+             title="Reds v Blues", home_name="Reds", away_name="Blues")
+    data = anymatch.load(path)
+    assert data["periods"] == [(10, 89)] and data["home_name"] == "Reds"
+    (half,) = anymatch.halves_of(data)
+    assert half.first_frame == 10 and half.n_frames == 80 and half.pitch == (100.0, 60.0)
+    assert half.meta["flipped"] and half.home_xy[0, 0, 0] == -30.0 and half.ball_xy[0, 0] == -5.0
+
+    # the run file keeps the pitch's own left and right, and the camera in metres
+    labels = np.full(frames, X, dtype=np.int8)
+    labels[10:90] = H
+    states = [np.tile(np.array([0.8, 0.1, 0.1]), (80, 1))]
+    run = anymatch.run_file(data, [half], labels, states, every=5)
+    assert run["match"]["periods"] == [{"name": "Part 1", "start": 10, "end": 89}]
+    assert run["tracking"]["samples"][2]["h"][0] == [30.0, 0.0]
+    assert run["camera"]["size"] == [1920, 1080] and run["camera"]["every"] == 5
+    assert run["camera"]["pitch_to_image"][0] == [10.0, 0.0, 960.0, 0.0, 10.0, 540.0, 0.0, 0.0, 1.0]
+    assert "withheld" not in run["video"]

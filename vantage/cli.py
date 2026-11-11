@@ -25,7 +25,7 @@ import sys
 
 import numpy as np
 
-from . import A, D, H, LABELS, X, __version__, competition, tagging
+from . import A, D, H, LABELS, X, __version__, anymatch, competition, tagging
 from . import decode as decoding
 from . import epts, model, viewer_export
 from .features import build as build_features
@@ -163,6 +163,29 @@ def export(args):
     return 0
 
 
+def tracking(args):
+    """Any match's tracking in, the viewer's run file out (see anymatch.py for the file)."""
+    state_model, boundary_model, card = load_model(args.model)
+    data = anymatch.load(args.file)
+    halves = anymatch.halves_of(data)
+    labels, states = anymatch.analyse(halves, len(data["ball"]), state_model, boundary_model, card)
+    run_file = anymatch.run_file(data, halves, labels, states,
+                                 None if args.no_evidence else state_model, card,
+                                 every=args.every)
+    folder = os.path.dirname(os.path.abspath(args.out))
+    os.makedirs(folder, exist_ok=True)
+    viewer_export.write(args.out, run_file)
+    print("wrote {}  ({:.1f} MB)".format(args.out, os.path.getsize(args.out) / 1e6))
+    if args.page:
+        viewer_export.write_page(args.page, run_file, args.viewer,
+                                 name=os.path.basename(args.out))
+        print("wrote {}  (the viewer with this match built in; open it in a browser)".format(
+            args.page))
+    for key, value in viewer_export.summary(run_file).items():
+        print("  {}: {}".format(key, value))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="vantage", description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -185,8 +208,20 @@ def main(argv=None):
                           help="also write the viewer with this match built in, as one .html file")
     exporter.add_argument("--viewer", default=DEFAULT_VIEWER,
                           help="the built viewer to use for --page")
+    tracker = sub.add_parser("tracking", help="analyse any match's tracking for the viewer")
+    tracker.add_argument("file", help="a tracking file (.npz, see vantage/anymatch.py)")
+    tracker.add_argument("--out", required=True, help="where to write the run file (.json)")
+    tracker.add_argument("--model", default=DEFAULT_MODEL)
+    tracker.add_argument("--every", type=int, default=5,
+                         help="keep one tracking sample and camera matrix in this many frames")
+    tracker.add_argument("--no-evidence", action="store_true",
+                         help="leave out the per-possession evidence shares (faster)")
+    tracker.add_argument("--page", default=None,
+                         help="also write the viewer with this match built in, as one .html file")
+    tracker.add_argument("--viewer", default=DEFAULT_VIEWER,
+                         help="the built viewer to use for --page")
     args = parser.parse_args(argv)
-    return {"run": run, "export": export}[args.command](args)
+    return {"run": run, "export": export, "tracking": tracking}[args.command](args)
 
 
 if __name__ == "__main__":

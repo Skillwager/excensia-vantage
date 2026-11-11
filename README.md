@@ -84,6 +84,8 @@ vantage/
   dfl.py, metrica_sample.py, external.py     the ten external matches
   evaluate.py, _official_metrics.py          scoring with the organisers' own metric code
   viewer_export.py   writes a run for the viewer: labels, confidence, evidence, tracking
+  anymatch.py        the same engine on any other match's tracking (`python -m vantage tracking`);
+                     the entry does not use it
   cli.py             `python -m vantage run` and `python -m vantage export`
 models/
   vantage_state.txt      frame classifier: home, away or dead ball

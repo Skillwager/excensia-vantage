@@ -64,7 +64,7 @@ def _point(xy):
 
 
 def build(title, home, away, labels, halves, states, evidence=None, every=5, period_names=None,
-          video_withheld=None):
+          video_withheld=None, camera=None):
     """The run file as a dict.
 
     labels    (N,) label codes for every video frame
@@ -74,6 +74,8 @@ def build(title, home, away, labels, halves, states, evidence=None, every=5, per
     every     keep one tracking sample in this many frames
     video_withheld  a sentence saying why this match's video may not be played beside these
               labels; the viewer then opens no video for it
+    camera    what `camera()` returns for the whole match at the same `every`; with it the viewer
+              draws the tracking on the video
     """
     n_frames = len(labels)
     period_names = period_names or ["1st half", "2nd half", "Extra time 1", "Extra time 2"]
@@ -145,7 +147,7 @@ def build(title, home, away, labels, halves, states, evidence=None, every=5, per
         if len(inside):
             periods.append({"name": period_names[index], "start": int(inside[0]),
                             "end": int(inside[-1])})
-    return {
+    run = {
         "schema": SCHEMA,
         "generator": {"name": "excensia-vantage", "version": __version__},
         "match": {"title": title, "home": {"name": home}, "away": {"name": away}, "fps": FPS,
@@ -159,22 +161,30 @@ def build(title, home, away, labels, halves, states, evidence=None, every=5, per
         "video": ({"offset_frames": 0, "withheld": video_withheld} if video_withheld
                   else {"offset_frames": 0}),
     }
+    if camera is not None:
+        run["camera"] = camera
+    return run
 
 
-def camera(matrices, valid, pitch, size, start, stop, every=1):
+def camera(matrices, valid, pitch, size, start, stop, every=1, metres=False):
     """The camera of a video for a run file: where a pitch position is in the picture.
 
-    matrices  (N, 3, 3), one per video frame, taking a pitch position in 0 to 1 units to a pixel
+    matrices  (N, 3, 3), one per video frame, taking a pitch position to a pixel. The position
+              is in 0 to 1 units of the pitch (the organisers' files), or with `metres` in
+              metres from the centre spot.
     valid     (N,) false where there is no matrix
     pitch     (length, width) in metres
     size      (width, height) of the picture in pixels
 
-    The run file's positions are metres from the centre spot, so each matrix is first combined
-    with that change of units, then scaled so that its last entry is 1. One matrix is kept for
-    every `every` frames of [start, stop), null where the camera is not known.
+    The run file's positions are metres from the centre spot, so a matrix in 0 to 1 units is
+    first combined with that change of units; every matrix is then scaled so that its last entry
+    is 1. One matrix is kept for every `every` frames of [start, stop), null where the camera is
+    not known.
     """
     length, width = float(pitch[0]), float(pitch[1])
     units = np.array([[1.0 / length, 0.0, 0.5], [0.0, 1.0 / width, 0.5], [0.0, 0.0, 1.0]])
+    if metres:
+        units = np.eye(3)
     rows = []
     for frame in range(int(start), int(stop), int(every)):
         if not valid[frame]:
