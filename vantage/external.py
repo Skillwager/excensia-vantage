@@ -185,20 +185,35 @@ def load_training(tag, matches, variants):
     run      (N,) the length in frames of the possession or stoppage the row belongs to
     metrica  (N,) True for rows from Metrica's sample games
     """
-    parts = {"table": [], "target": [], "change": [], "run": [], "metrica": []}
-    names = None
-    for match in matches:
-        for period in (1, 2):
-            for variant in range(variants):
-                for view in ("own", "swap"):
-                    with np.load(train_table_path(tag, match, period, variant, view)) as data:
-                        for key in ("table", "target", "change", "run"):
-                            parts[key].append(data[key])
-                        parts["metrica"].append(
-                            np.full(len(data["target"]), source_of(match) == "metrica"))
-                        names = [str(name) for name in data["names"]]
-    out = {key: np.concatenate(value, axis=1 if key == "change" else 0)
-           for key, value in parts.items()}
+    paths = [(match, train_table_path(tag, match, period, variant, view))
+             for match in matches for period in (1, 2) for variant in range(variants)
+             for view in ("own", "swap")]
+    # First the sizes, from the small arrays only; then every table is read once, straight into
+    # its place. Joining lists of arrays would hold the whole set in memory twice.
+    sizes = []
+    for _, path in paths:
+        with np.load(path) as data:
+            sizes.append(len(data["target"]))
+    with np.load(paths[0][1]) as data:
+        names = [str(name) for name in data["names"]]
+        width, table_type = data["table"].shape[1], data["table"].dtype
+        target_type, change_type, run_type = data["target"].dtype, data["change"].dtype, data["run"].dtype
+        change_rows = data["change"].shape[0]
+    total = int(sum(sizes))
+    out = {"table": np.empty((total, width), dtype=table_type),
+           "target": np.empty(total, dtype=target_type),
+           "change": np.empty((change_rows, total), dtype=change_type),
+           "run": np.empty(total, dtype=run_type),
+           "metrica": np.empty(total, dtype=bool)}
+    start = 0
+    for (match, path), size in zip(paths, sizes):
+        with np.load(path) as data:
+            out["table"][start:start + size] = data["table"]
+            out["target"][start:start + size] = data["target"]
+            out["change"][:, start:start + size] = data["change"]
+            out["run"][start:start + size] = data["run"]
+        out["metrica"][start:start + size] = source_of(match) == "metrica"
+        start += size
     out["names"] = names
     return out
 
