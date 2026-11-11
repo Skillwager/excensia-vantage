@@ -161,6 +161,57 @@ def build(title, home, away, labels, halves, states, evidence=None, every=5, per
     }
 
 
+def window(title, home, away, labels, halves, start, stop, every=5, generator=None, period=None):
+    """A run file of one stretch of a match, video frames [start, stop), with labels that are
+    given and nothing from a model: no confidence and no evidence.
+
+    Frame 0 of the run is video frame `start`; the file says so in video.offset_frames, and a
+    viewer playing the video beside it starts the video there. Made for the organisers' public
+    five minutes: their labels and the provided tracking, to be watched with the video in order
+    to see what counts as possession (scripts/public_truth_run.py).
+    """
+    start, stop = int(start), int(stop)
+    if not 0 <= start < stop <= len(labels):
+        raise ValueError("the stretch {}..{} is not inside the {} labelled frames".format(
+            start, stop, len(labels)))
+    count = (stop - start + every - 1) // every
+    home_slots = max(half.home_xy.shape[1] for half in halves)
+    away_slots = max(half.away_xy.shape[1] for half in halves)
+    samples = [{"b": None, "h": [None] * home_slots, "a": [None] * away_slots}
+               for _ in range(count)]
+    for half in halves:
+        sign = -1.0 if half.meta.get("flipped") else 1.0
+        first = max(start, half.first_frame)
+        last = min(stop, half.first_frame + half.n_frames)
+        for frame in range(first, last):
+            if (frame - start) % every:
+                continue
+            row = frame - half.first_frame
+            sample = samples[(frame - start) // every]
+            sample["b"] = _point(sign * half.ball_xy[row])
+            sample["h"] = [_point(sign * xy) for xy in half.home_xy[row]] + [None] * (
+                home_slots - half.home_xy.shape[1])
+            sample["a"] = [_point(sign * xy) for xy in half.away_xy[row]] + [None] * (
+                away_slots - half.away_xy.shape[1])
+    inside = np.asarray(labels[start:stop])
+    known = np.flatnonzero(inside != X)
+    periods = []
+    if len(known):
+        periods.append({"name": period or "Labelled", "start": int(known[0]),
+                        "end": int(known[-1])})
+    return {
+        "schema": SCHEMA,
+        "generator": generator or {"name": "excensia-vantage", "version": __version__},
+        "match": {"title": title, "home": {"name": home}, "away": {"name": away}, "fps": FPS,
+                  "frames": int(stop - start),
+                  "pitch": {"length": float(halves[0].pitch[0]), "width": float(halves[0].pitch[1])},
+                  "periods": periods},
+        "labels": _run_length(inside),
+        "tracking": {"every": int(every), "samples": samples},
+        "video": {"offset_frames": start},
+    }
+
+
 def write(path, run):
     with open(path, "w", newline="\n", encoding="utf-8") as handle:
         json.dump(run, handle, separators=(",", ":"))

@@ -5,7 +5,7 @@ import os
 import numpy as np
 import pytest
 
-from vantage import A, D, H, X, competition, epts, evaluate, tagging
+from vantage import A, D, H, X, competition, epts, evaluate, tagging, viewer_export
 from vantage import decode as decoding
 from vantage.features import build
 from vantage.half import Half
@@ -367,3 +367,34 @@ def test_extra_log_prob_is_added_before_decoding():
     extra = np.zeros((100, 3))
     extra[:, A] = 0.5
     assert (decoding.decode(prob, decoding.DecodeConfig(), extra_log_prob=extra) == A).all()
+
+
+# -- run files for the viewer --------------------------------------------------------------------
+
+def test_a_window_run_starts_the_video_where_the_window_starts():
+    frames = 200
+    ball = np.zeros((frames, 2), dtype=np.float32)
+    ball[:, 0] = np.arange(frames)
+    ball[50:60] = np.nan
+    home = np.full((frames, 2, 2), 10.0, dtype=np.float32)
+    away = np.full((frames, 3, 2), -10.0, dtype=np.float32)
+    half = Half(match="toy", period=1, pitch=(105.0, 68.0), ball_xy=ball, home_xy=home,
+                away_xy=away, first_frame=1000, meta={"flipped": True})
+    labels = np.full(1300, X, dtype=np.int8)
+    labels[1040:1100] = H
+    labels[1100:1150] = D
+    run = viewer_export.window("Toy", "Reds", "Blues", labels, [half], 1030, 1160, every=5)
+    assert run["video"] == {"offset_frames": 1030}
+    assert run["match"]["frames"] == 130
+    assert run["labels"] == [["X", 10], ["H", 60], ["D", 50], ["X", 10]]
+    assert run["match"]["periods"] == [{"name": "Labelled", "start": 10, "end": 119}]
+    samples = run["tracking"]["samples"]
+    assert len(samples) == 26
+    # run frame 0 is video frame 1030, row 30 of the half, and a turned half is turned back
+    assert samples[0]["b"] == [-30.0, 0.0]
+    assert samples[0]["h"] == [[-10.0, -10.0]] * 2 and samples[0]["a"] == [[10.0, 10.0]] * 3
+    assert samples[4]["b"] is None and samples[5]["b"] is None and samples[6]["b"] == [-60.0, 0.0]
+    # nothing in it pretends to come from a model
+    assert "spells" not in run and "transitions" not in run
+    with pytest.raises(ValueError):
+        viewer_export.window("Toy", "Reds", "Blues", labels, [half], 1200, 1400)

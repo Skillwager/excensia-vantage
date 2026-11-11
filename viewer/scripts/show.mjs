@@ -3,6 +3,14 @@
  * address bar, maximised, and playing from the moment asked for.
  *
  *   node scripts/show.mjs ../runs/match/final/match.html --at=7:20
+ *   node scripts/show.mjs page.html --video=/path/to/match.mp4
+ *   node scripts/show.mjs --close
+ *
+ * --video hands the page a video file, the way its own "Add the match video" button does, and
+ * starts the two together. Whether the page takes it is the page's decision: a run file of the
+ * model's output for the competition match says that its video is withheld, and the viewer then
+ * turns the video away (the organisers' rules do not allow output to be checked against the
+ * video). A page of the organisers' public five minutes (scripts/public_truth_run.py) takes it.
  *
  * The window is a separate browser with its own empty profile (kept under runs/, which is not
  * in the repository), so no extension of your everyday browser can read the page. The script
@@ -26,6 +34,11 @@ const args = Object.fromEntries(
 const file = positional[0];
 if (!args.close && (!file || !existsSync(file))) {
   console.error("Give the path of a page made with export --page, or --close to close the window.");
+  process.exit(2);
+}
+const videoFile = typeof args.video === "string" ? resolve(args.video) : null;
+if (videoFile && !existsSync(videoFile)) {
+  console.error(`There is no video at ${videoFile}.`);
   process.exit(2);
 }
 
@@ -66,10 +79,20 @@ if (args.close) {
 }
 
 const at = typeof args.at === "string" ? args.at : "0:00";
-const address = pathToFileURL(resolve(file)).href + `#t=${at}&play=1`;
+// with a video to hand over, the match waits for it; otherwise it starts by itself
+const address = pathToFileURL(resolve(file)).href + (videoFile ? `#t=${at}` : `#t=${at}&play=1`);
 const child = spawn(
   executable,
-  [`--user-data-dir=${profile}`, `--app=${address}`, "--start-maximized", "--no-first-run", "--no-default-browser-check", "--disable-sync", "--remote-debugging-port=0"],
+  [
+    `--user-data-dir=${profile}`,
+    `--app=${address}`,
+    "--start-maximized",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-sync",
+    "--autoplay-policy=no-user-gesture-required",
+    "--remote-debugging-port=0",
+  ],
   { detached: true, stdio: "ignore" },
 );
 child.unref();
@@ -101,20 +124,47 @@ try {
   if (!page) throw new Error("the page did not open");
   await page.waitForSelector(".poss", { timeout: 120_000 });
   await page.waitForFunction(() => !document.querySelector(".notice--busy"), null, { timeout: 120_000 });
+
+  let taken = false;
+  if (videoFile) {
+    // the file is named to the page's own video input; nothing is copied
+    const session = await context.newCDPSession(page);
+    const { root: documentNode } = await session.send("DOM.getDocument");
+    const { nodeId } = await session.send("DOM.querySelector", { nodeId: documentNode.nodeId, selector: 'input[type="file"][accept*="video"]' });
+    await session.send("DOM.setFileInputFiles", { files: [videoFile], nodeId });
+    await page
+      .waitForFunction(
+        () => {
+          const video = document.querySelector("video.match__media");
+          return (video && video.readyState >= 2) || document.querySelector(".notice[role=alert]");
+        },
+        null,
+        { timeout: 60_000 },
+      )
+      .catch(() => {});
+    taken = (await page.locator("video.match__media").count()) === 1;
+    if (taken) await page.locator(".tp__play").first().click();
+  }
+
   const read = () =>
-    page.evaluate(() => ({
-      clock: document.querySelector(".tp__now")?.textContent ?? "",
-      total: document.querySelector(".tp__total")?.textContent ?? "",
-      playing: document.querySelector(".tp__play")?.getAttribute("aria-label") === "Pause",
-      alerts: document.querySelectorAll(".notice[role=alert]").length,
-      video: document.querySelectorAll("video").length,
-      visible: document.visibilityState === "visible",
-      focused: document.hasFocus(),
-      width: window.innerWidth,
-      height: window.innerHeight,
-      screenWidth: window.screen.availWidth,
-      screenHeight: window.screen.availHeight,
-    }));
+    page.evaluate(() => {
+      const video = document.querySelector("video.match__media");
+      return {
+        clock: document.querySelector(".tp__now")?.textContent ?? "",
+        total: document.querySelector(".tp__total")?.textContent ?? "",
+        playing: document.querySelector(".tp__play")?.getAttribute("aria-label") === "Pause",
+        alerts: document.querySelectorAll(".notice[role=alert]").length,
+        videos: document.querySelectorAll("video").length,
+        videoTime: video ? video.currentTime : null,
+        videoPaused: video ? video.paused : null,
+        visible: document.visibilityState === "visible",
+        focused: document.hasFocus(),
+        width: window.innerWidth,
+        height: window.innerHeight,
+        screenWidth: window.screen.availWidth,
+        screenHeight: window.screen.availHeight,
+      };
+    });
   const seconds = (clock) => {
     const parts = String(clock).trim().split(":").map(Number);
     return parts.length === 2 ? parts[0] * 60 + parts[1] : NaN;
@@ -123,9 +173,18 @@ try {
   const first = await read();
   await page.waitForTimeout(4000);
   const second = await read();
-  say(second.alerts === 0, `the page is up, ${second.total} long, with ${second.alerts} error messages`);
-  say(second.video === 0, `no video is in the page (${second.video})`);
-  say(second.playing && seconds(second.clock) - seconds(first.clock) >= 3, `it is playing by itself: the clock went from ${first.clock} to ${second.clock} in four seconds`);
+  if (videoFile && !taken) {
+    say(false, `the page did not take the video (${second.alerts} message on the page says why); it shows the match drawn from its tracking`);
+  } else {
+    say(second.alerts === 0, `the page is up, ${second.total} long, with ${second.alerts} error messages`);
+    if (videoFile) {
+      say(
+        second.videos === 1 && second.videoPaused === false && second.videoTime - first.videoTime >= 3,
+        `the video is in the page and playing: ${first.videoTime.toFixed(1)} s to ${second.videoTime.toFixed(1)} s of the video in four seconds`,
+      );
+    } else say(second.videos === 0, `no video is in the page (${second.videos})`);
+    say(second.playing && seconds(second.clock) - seconds(first.clock) >= 3, `the clock is running: from ${first.clock} to ${second.clock} in four seconds`);
+  }
   say(second.visible, `the window is showing (${second.width}x${second.height} of a ${second.screenWidth}x${second.screenHeight} screen)${second.focused ? ", in front" : ", not in front yet"}`);
 } catch (error) {
   say(false, `the window did not answer as expected: ${error.message}`);

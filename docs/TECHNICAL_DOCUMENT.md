@@ -120,6 +120,11 @@ or choice between versions came from it; those choices are made on other matches
 What the team does look at is the finished file in the viewer, with the match drawn from its
 tracking, and nothing is changed because of that either.
 
+The team has also watched the tactical video, on its own and with the organisers' public five
+minutes of labels over it (`scripts/public_truth_run.py` writes those labels as a file for the
+viewer), to see what the labels mean, which the clarification allows. The model's output was not
+on the screen with the video, and nothing in the method was changed because of what was watched.
+
 **AI assistance.** The code and this document were written with a hosted AI coding assistant
 (Claude). The tracking rows, tags, homography and video of the match were kept out of its
 context: it worked through scripts that run on the local machine and print totals (counts,

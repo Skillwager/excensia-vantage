@@ -17,7 +17,11 @@ nothing else, and everything it has learned comes from **other** matches.
   stay on your machine. It shows that match drawn from its tracking and never its video: the
   organisers' rules do not allow output to be checked against the video, the run file of that
   match says so, and the viewer then opens no video beside it. `viewer/scripts/page-check.mjs`
-  walks every tab of such a page and reports counts only, with no picture.
+  walks every tab of such a page and reports counts only, with no picture. What may be watched
+  with that match's video is the organisers' own public five minutes, since they allow
+  inspecting the provided data and the video to understand what counts as possession:
+  `scripts/public_truth_run.py` writes those labels as a page, and `node viewer/scripts/show.mjs
+  that-page.html --video=/path/to/tactical.mp4` plays the two together.
 
 ## Reproduce the submitted file
 
@@ -121,6 +125,7 @@ The other scripts are the checks behind statements in the technical document:
 | `error_report.py` | Which possessions are missed on held-out external matches, by length and by kind of miss. |
 | `label_stats.py` | The external labels: possessions per minute, lengths, and what a minimum length would do to them. |
 | `export_external.py` | A run file for the viewer from one of the open matches, so the whole path can be seen on open data. |
+| `public_truth_run.py` | The organisers' public five minutes as a run file for the viewer: their labels and the provided tracking, nothing from the model. Totals only are printed. |
 | `adversarial.py` | Whether a classifier can tell simulated from provided tracking, and on which features. |
 
 ## Tests
