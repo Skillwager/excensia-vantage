@@ -244,7 +244,7 @@ on eight of the ten held-out matches, leaves one unchanged and costs one 0.001. 
 instead of three gain between 0.001 and 0.018 on eight and leave two unchanged.
 
 **What was tried on the finished method and not adopted.** Each line is the same five folds,
-paired match by match with the method as it stood before the last step (`scripts/compare_cv.py`):
+paired match by match with the method it would have changed (`scripts/compare_cv.py`):
 
 | Tried | Change in spellF1: Metrica's games, DFL matches, all ten | Matches that gain, that lose |
 |---|---|---|
@@ -256,12 +256,15 @@ paired match by match with the method as it stood before the last step (`scripts
 | Larger trees (127 leaves of at least 200 rows, instead of 63 of at least 300) | +0.003, +0.001, +0.001 | 7, 3 |
 | SkillCorner's twenty matches added to the training rows (see below) | -0.007, -0.011, -0.010 | 1, 8 |
 | Half of the training matches only | -0.007, -0.011, -0.010 | 1, 9 |
+| Nine simulated recordings of every training half instead of six | +0.001, +0.003, +0.003 | 7, 3 |
 
 The two seeds show how far chance alone moves these numbers: a few thousandths in the mean, with
-single matches going both ways. Nothing above stays clear of that. The last line was not a
-candidate. It asks whether the method is short of matches, and it is: half the matches cost a
-hundredth. No other open matches with labels of the right kind are known to us, which is why the
-step that was adopted gets more out of the same ten matches instead.
+single matches going both ways. Nothing above stays clear of that. The half-the-matches line was
+not a candidate. It asks whether the method is short of matches, and it is: half the matches cost
+a hundredth. No other open matches with labels of the right kind are known to us, which is why the
+step that was adopted gets more out of the same ten matches instead. Going from six simulated
+recordings to nine still points the right way, but by less than chance moves it, so the gain from
+more recordings of the same matches has run out at about six.
 
 The simulator that follows the ball through stoppages cannot be scored this way, because it
 changes the test itself: the simulated recordings it is tested on became harder and more like
