@@ -88,10 +88,32 @@ def labelled_halves(match):
     return halves
 
 
+# How much the recording's tracker smooths its paths, measured on the recording without labels
+# (scripts/smoothing_report.py): a strong change of the ball's velocity is spread evenly over 21
+# frames, which is what a centred moving average of 21 frames does to a kick; the start and
+# end of that spread are rounded, as a second average of 5 frames rounds them; about half a
+# millimetre of frame-to-frame noise is left; and the players' paths are as smooth as the
+# open matches' after a moving average of 7. The first generation of simulated recordings
+# smoothed the ball over 3 to 9 frames and the players not at all. VANTAGE_SIM=g1 gives those
+# again, draw for draw.
+BALL_SMOOTH_G2 = {3: 19, 5: 21, 7: 21, 9: 23}
+BALL_SMOOTH2_G2 = 5
+BALL_JITTER_G2 = 0.0005
+PLAYER_SMOOTH_G2 = 7
+
+
+def generation():
+    return os.environ.get("VANTAGE_SIM", "g2")
+
+
 def observed(half, rng, config):
     """What automatic tracking might have recorded of this half."""
     if half.meta.get("source") == "skillcorner":
         return half         # it is automatic tracking: what was recorded is what there is
+    if config is not None and generation() == "g2":
+        config = replace(config, ball_smooth=BALL_SMOOTH_G2.get(config.ball_smooth, config.ball_smooth),
+                         ball_smooth2=BALL_SMOOTH2_G2, ball_jitter=BALL_JITTER_G2,
+                         player_smooth=PLAYER_SMOOTH_G2)
     if half.meta.get("source") == "metrica-sample":
         half = metrica_sample.with_dead_ball_track(half, rng)
         if config is not None:

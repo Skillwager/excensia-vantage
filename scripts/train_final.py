@@ -18,7 +18,7 @@ import platform
 import lightgbm
 import numpy as np
 
-from vantage import __version__, external, model
+from vantage import __version__, external, model, smoothing
 from vantage import decode as decoding
 from vantage.labels import CONTROL_SECONDS
 
@@ -96,11 +96,16 @@ def main():
         "features": names,
         "models": models,
         "decode": decode,
+        # the simulated recordings these models learned from are smoothed as the reference is
+        "smoothing": ({"reference": smoothing.REFERENCE, "target": smoothing.TARGET,
+                       "windows": list(smoothing.WINDOWS)}
+                      if external.generation() == "g2" else None),
         "training": {
             "matches": list(external.ALL_MATCHES),
             "rows": int(len(table)),
             "class_counts": np.bincount(target, minlength=3).tolist(),
             "data_tag": args.data_tag,
+            "generation": external.generation(),
             "variants": args.variants,
             "rounds": args.rounds,
             "boundary_rounds": args.boundary_rounds,

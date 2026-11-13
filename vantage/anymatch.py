@@ -30,7 +30,7 @@ import numpy as np
 
 from . import FPS, X
 from . import decode as decoding
-from . import model, viewer_export
+from . import model, smoothing, viewer_export
 from .features import build as build_features
 from .half import Half, home_attacks_positive_x
 
@@ -129,6 +129,7 @@ def analyse(halves, frames, state_model, boundary_model, card):
     labels = np.full(frames, X, dtype=np.int8)
     states = []
     for half in halves:
+        half, _ = smoothing.for_model(half, card)
         state, boundary = model.predict_half_both(state_model, boundary_model, half,
                                                   card["features"])
         labels[half.first_frame:half.first_frame + half.n_frames] = decoding.decode(
@@ -144,6 +145,7 @@ def run_file(tracking, halves, labels, states, state_model=None, card=None, ever
     if state_model is not None and card is not None:
         evidence = []
         for half in halves:
+            half, _ = smoothing.for_model(half, card)
             built, table = build_features(half)
             names = card["features"]
             table = table[:, [built.index(name) for name in names]]

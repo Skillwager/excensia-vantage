@@ -27,7 +27,7 @@ import numpy as np
 
 from . import A, D, H, LABELS, X, __version__, anymatch, competition, tagging
 from . import decode as decoding
-from . import epts, model, viewer_export
+from . import epts, model, smoothing, viewer_export
 from .features import build as build_features
 from .labels import spell_stats
 
@@ -83,6 +83,15 @@ def analyse(args):
             half.meta["restarts"] = [(frame - half.first_frame, team) for frame, team in tagged
                                      if 0 <= frame - half.first_frame < half.n_frames]
 
+    # A model trained on paths at the reference smoothness gets every recording at it. The
+    # measurement needs no label, and a recording that is already as smooth is left alone.
+    card["ball_path"] = []
+    for index, half in enumerate(halves):
+        changes, share = smoothing.spread(half.ball_xy)
+        halves[index], window = smoothing.for_model(half, card)
+        card["ball_path"].append({"strong_changes": changes, "share": round(share, 4),
+                                  "moving_average": window})
+
     decoded, states = [], []
     for half in halves:
         state, boundary = model.predict_half_both(state_model, boundary_model, half,
@@ -113,6 +122,7 @@ def run(args):
                   "files": card["models"]},
         "decode": card["decode"],
         "tagging": not args.no_tagging,
+        "ball_path": card["ball_path"],
         "inputs": {name: sha256(paths[name]) for name in ("meta", "raw", "tagging")},
         "output": {"file": os.path.basename(args.out), "sha256": sha256(args.out),
                    "rows": int(len(labels)), "counts": counts,

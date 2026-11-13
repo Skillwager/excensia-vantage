@@ -78,6 +78,8 @@ class DegradeConfig:
     out_margin: float = 1.5           # m: a ball further than this off the pitch is not reported
     ball_drift: float = 0.5           # m, slow error
     ball_smooth: int = 5              # frames: the tracker's own smoothing of the ball's path
+    ball_smooth2: int = 1             # frames: a second, shorter moving average after the first
+    ball_jitter: float = 0.0          # m: frame-to-frame noise left in the smoothed path
     parallax: float = 0.1             # 0 = true ground position, 1 = full single-camera parallax
     camera_x: float = 0.0
     camera_back: float = 30.0         # m behind the near touchline
@@ -89,6 +91,7 @@ class DegradeConfig:
     player_gap_mean: float = 8.0      # s, mean length of a player's absence
     player_blips: float = 0.3         # brief losses (under 2 s) per player-minute
     player_drift: float = 0.2         # m, slow error
+    player_smooth: int = 1            # frames: the tracker's own smoothing of a player's path
     blackout: float = 0.35            # chance a long stoppage loses many players for a while
     extra_share: float = 0.1          # share of the half with an extra body on some team
     wrong_team_rate: float = 0.0005   # per player-second
@@ -363,6 +366,12 @@ def degrade(half, rng, config):
     reported = ball + stretch[:, None] * (ball - camera)
     reported += _smooth_noise(rng, reported.shape, config.ball_drift, 2 * FPS)
     reported = _moving_average(reported, config.ball_smooth)
+    if config.ball_smooth2 > 1:
+        reported = _moving_average(reported, config.ball_smooth2)
+    if config.ball_jitter > 0:
+        # its own stream of random numbers, so that everything else is drawn as before
+        own = np.random.default_rng(rng.bit_generator.seed_seq.spawn(1)[0])
+        reported = reported + own.normal(0.0, config.ball_jitter, size=reported.shape).astype(np.float32)
 
     hidden |= unavailable
 
@@ -403,6 +412,9 @@ def degrade(half, rng, config):
     for own, other in ((half.home_xy, half.away_xy), (half.away_xy, half.home_xy)):
         xy = own.astype(np.float32).copy()
         xy += _smooth_noise(rng, xy.shape, config.player_drift, 4 * FPS)
+        if config.player_smooth > 1:
+            for slot in range(xy.shape[1]):
+                xy[:, slot] = _moving_average(xy[:, slot], config.player_smooth)
         for slot in range(xy.shape[1]):
             on_pitch = np.isfinite(xy[:, slot, 0])
             if not on_pitch.any():
