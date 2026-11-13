@@ -16,7 +16,7 @@ from dataclasses import replace
 
 import numpy as np
 
-from vantage import X, cli, evaluate, external, model, viewer_export
+from vantage import X, cli, evaluate, external, model, smoothing, viewer_export
 from vantage import decode as decoding
 from vantage.features import build
 
@@ -42,6 +42,7 @@ def main():
     for half in external.labelled_halves(args.match):
         noisy = replace(external.condition_half(half, args.match, args.condition),
                         first_frame=offset)
+        noisy, _ = smoothing.for_model(noisy, card)
         state, boundary = model.predict_half_both(state_model, boundary_model, noisy,
                                                   card["features"])
         codes = decoding.decode(state, config, boundary)

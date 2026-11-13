@@ -19,6 +19,9 @@ from vantage.external import ROOT, source_of
 SKIP = ("clean",)
 
 
+RECORDED = {}       # tag -> the simulator generations its held-out matches were recorded with
+
+
 def load(tag):
     """({(condition, match): [score per setting]}, the grid) of one run."""
     cells, grid = {}, None
@@ -26,6 +29,8 @@ def load(tag):
         with open(path) as handle:
             data = json.load(handle)
         grid = data["grid"]
+        # summaries from before the generation was written down are the first generation's
+        RECORDED.setdefault(tag, set()).add(data.get("generation", "g1"))
         for key, scores in data["results"].items():
             condition, match = key.split("|")
             cells[(condition, match)] = np.array([score["spellF1"] for score in scores])
@@ -54,6 +59,10 @@ def main():
     base_setting, base = best(base_cells, matches)
     other_setting, other = best(other_cells, matches)
     print("{} matches in both{}".format(len(matches), "; only in one: " + " ".join(missing) if missing else ""))
+    if RECORDED.get(args.base) != RECORDED.get(args.other):
+        print("NOT THE SAME TEST: {} was scored on recordings of simulator {}, {} on {}".format(
+            args.base, "/".join(sorted(RECORDED.get(args.base, []))),
+            args.other, "/".join(sorted(RECORDED.get(args.other, [])))))
     print("{:<10} {:>9} {:>9} {:>8}".format("match", args.base, args.other, "change"))
     for match in matches:
         print("{:<10} {:>9.3f} {:>9.3f} {:>+8.3f}".format(match, base[match], other[match], other[match] - base[match]))

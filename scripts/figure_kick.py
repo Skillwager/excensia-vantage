@@ -70,23 +70,7 @@ def middle(share, frames):
     return float(sum(share[REACH - half:REACH + half + 1]))
 
 
-def width_at_half(share):
-    """For how many frames the curve stays at half its height or more, read between frames."""
-    share = np.asarray(share, dtype=np.float64)
-    top = int(np.argmax(share))
-    half = 0.5 * share[top]
-    left = top
-    while left > 0 and share[left - 1] >= half:
-        left -= 1
-    right = top
-    while right < len(share) - 1 and share[right + 1] >= half:
-        right += 1
-    width = float(right - left)
-    if left > 0:
-        width += (share[left] - half) / (share[left] - share[left - 1])
-    if right < len(share) - 1:
-        width += (share[right] - half) / (share[right] - share[right + 1])
-    return width
+width_at_half = smoothing.half_width
 
 
 def seconds(frames):

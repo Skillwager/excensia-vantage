@@ -16,13 +16,14 @@ begin when the last player lets the ball go, not when it crosses the line.
 """
 
 import argparse
+import json
 import os
 import time
 
 import numpy as np
 
 from vantage import decode as decoding
-from vantage import evaluate, external, model
+from vantage import evaluate, external, model, smoothing
 from vantage.cli import DEFAULT_MODEL, load_model
 from vantage.external import ROOT, SKILLCORNER_MATCHES, labelled_halves, seed_for
 
@@ -32,10 +33,16 @@ def main():
     parser.add_argument("--matches", nargs="*", default=None)
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--tag", default="sc_shipped")
+    parser.add_argument("--smooth", action="store_true",
+                        help="bring every half's ball path to the reference smoothness first, "
+                             "whatever the model card asks for")
+    parser.add_argument("--as-recorded", action="store_true",
+                        help="leave every half's ball path as it is, whatever the model card asks for")
+    parser.add_argument("--decode", default=None, help="JSON of decoding settings, else the card's")
     args = parser.parse_args()
     state_model, boundary_model, card = load_model(args.model)
     names = card["features"]
-    config = decoding.DecodeConfig(**card["decode"])
+    config = decoding.DecodeConfig(**(json.loads(args.decode) if args.decode else card["decode"]))
     out_dir = os.path.join(ROOT, "runs", "cv", args.tag)
     os.makedirs(out_dir, exist_ok=True)
     rows = []
@@ -45,6 +52,10 @@ def main():
         started = time.time()
         truth, predicted, payload = [], [], {}
         for index, half in enumerate(labelled_halves(match)):
+            if args.smooth:
+                half, _ = smoothing.to_reference(half)
+            elif not args.as_recorded:
+                half, _ = smoothing.for_model(half, card)
             tagged = external.with_tags(half, np.random.default_rng(
                 seed_for("tags", "eval", match, half.period, "clean")))
             state, boundary = model.predict_half_both(state_model, boundary_model, tagged, names)

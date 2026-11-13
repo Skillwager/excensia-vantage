@@ -20,7 +20,7 @@ import os
 import lightgbm
 import numpy as np
 
-from vantage import competition, external
+from vantage import competition, epts, external, tagging
 from vantage.features import build
 
 
@@ -39,6 +39,8 @@ def main():
     parser.add_argument("--rows", type=int, default=60000)
     parser.add_argument("--top", type=int, default=30)
     parser.add_argument("--drop", nargs="*", default=[], help="features to leave out")
+    parser.add_argument("--only", nargs="*", default=None,
+                        help="prefixes of the features to keep (default: all)")
     parser.add_argument("--fresh", type=int, default=0,
                         help="simulate this many external matches now instead of using the cache")
     args = parser.parse_args()
@@ -53,7 +55,13 @@ def main():
             names, table = build(external.observed(half, rng, DegradeConfig()))
             real.append(table)
     else:
+        # the tagged set pieces are attached as the run command attaches them
+        paths = competition.tactical_paths(args.data_dir)
+        home_name, away_name = epts.read_team_names(paths["meta"])
+        tagged = tagging.restarts(tagging.load(paths["tagging"]), home_name, away_name)
         for half in competition.load_halves(args.data_dir):
+            half.meta["restarts"] = [(frame - half.first_frame, team) for frame, team in tagged
+                                     if 0 <= frame - half.first_frame < half.n_frames]
             names, table = build(half)
             real.append(table)
     real = sample_rows(np.concatenate(real), args.rows, rng)
@@ -79,7 +87,8 @@ def main():
                 simulated.append(sample_rows(data["table"], per_file, rng))
     simulated = np.concatenate(simulated)
 
-    keep = [index for index, name in enumerate(names) if name not in set(args.drop)]
+    keep = [index for index, name in enumerate(names) if name not in set(args.drop)
+            and (args.only is None or any(name.startswith(prefix) for prefix in args.only))]
     kept_names = [names[index] for index in keep]
     table = np.concatenate([real[:, keep], simulated[:, keep]])
     target = np.concatenate([np.ones(len(real)), np.zeros(len(simulated))])

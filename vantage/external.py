@@ -100,10 +100,23 @@ BALL_SMOOTH_G2 = {3: 19, 5: 21, 7: 21, 9: 23}
 BALL_SMOOTH2_G2 = 5
 BALL_JITTER_G2 = 0.0005
 PLAYER_SMOOTH_G2 = 7
+# The third generation treats the two ends of a track as the recording's tracker does, read off
+# the recording without labels (scripts/edge_report.py): a track begins at full speed, and a
+# ball or a player that is lost is still reported for 5 frames where it was last seen, after
+# which the average takes that place for everything that follows, so every track slows to a
+# stop over its last 16 frames. The same reading shows the players' paths averaged over 21
+# frames, as the ball's is, not over 7. Nothing is averaged across frames the tracker did not
+# have: the second generation did that, and an independent review caught it.
+PLAYER_SMOOTH_G3 = 21
+TRACK_HOLD_G3 = 5
+GENERATIONS = ("g1", "g2", "g3")
 
 
 def generation():
-    return os.environ.get("VANTAGE_SIM", "g2")
+    value = os.environ.get("VANTAGE_SIM", "g3")
+    if value not in GENERATIONS:
+        raise SystemExit("VANTAGE_SIM is {!r}; it has to be one of {}".format(value, ", ".join(GENERATIONS)))
+    return value
 
 
 def observed(half, rng, config):
@@ -114,6 +127,10 @@ def observed(half, rng, config):
         config = replace(config, ball_smooth=BALL_SMOOTH_G2.get(config.ball_smooth, config.ball_smooth),
                          ball_smooth2=BALL_SMOOTH2_G2, ball_jitter=BALL_JITTER_G2,
                          player_smooth=PLAYER_SMOOTH_G2)
+    if config is not None and generation() == "g3":
+        config = replace(config, ball_smooth=BALL_SMOOTH_G2.get(config.ball_smooth, config.ball_smooth),
+                         ball_smooth2=BALL_SMOOTH2_G2, ball_jitter=BALL_JITTER_G2,
+                         player_smooth=PLAYER_SMOOTH_G3, edges="keep", track_hold=TRACK_HOLD_G3)
     if half.meta.get("source") == "metrica-sample":
         half = metrica_sample.with_dead_ball_track(half, rng)
         if config is not None:
@@ -193,13 +210,15 @@ def prepare_match(match, tag, variants, stride):
                     rows = rows[seen[rows] >= 14]
                 np.savez(path, table=table[rows], target=version.labels[rows],
                          change=change_distances(version.labels)[:, rows],
-                         run=run_lengths(version.labels)[rows], names=np.array(names))
+                         run=run_lengths(version.labels)[rows], names=np.array(names),
+                         generation=np.array(generation()))
 
 
 def load_training(tag, matches, variants):
     """The cached training tables of the given matches, as one set of arrays.
 
     names    the feature names
+    generation  which generation of the simulator made the tables (they must all agree)
     table    (N, F) float32 features
     target   (N,) home, away or dead ball
     change   (3, N) frames to the nearest turnover, stoppage start and restart: the boundary
@@ -212,10 +231,15 @@ def load_training(tag, matches, variants):
              for view in ("own", "swap")]
     # First the sizes, from the small arrays only; then every table is read once, straight into
     # its place. Joining lists of arrays would hold the whole set in memory twice.
-    sizes = []
+    sizes, made_by = [], set()
     for _, path in paths:
         with np.load(path) as data:
             sizes.append(len(data["target"]))
+            # tables from before the generation was written down are the first generation's
+            made_by.add(str(data["generation"]) if "generation" in data.files else "g1")
+    if len(made_by) > 1:
+        raise SystemExit("the tables of {} were made by different simulators ({}): build them again "
+                         "under one tag".format(tag, ", ".join(sorted(made_by))))
     with np.load(paths[0][1]) as data:
         names = [str(name) for name in data["names"]]
         width, table_type = data["table"].shape[1], data["table"].dtype
@@ -237,6 +261,7 @@ def load_training(tag, matches, variants):
         out["metrica"][start:start + size] = source_of(match) == "metrica"
         start += size
     out["names"] = names
+    out["generation"] = made_by.pop()
     return out
 
 

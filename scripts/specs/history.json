@@ -1,0 +1,4 @@
+[
+  {"tag": "H3", "state": {"only": "@v10", "copies": 3}, "boundary": {"only": "@v10", "copies": 3}},
+  {"tag": "H3w1", "state": {"only": "@v10", "copies": 3, "short_weight": 1.0}, "boundary": "reuse:H3"}
+]

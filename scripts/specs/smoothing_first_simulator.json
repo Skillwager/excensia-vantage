@@ -1,0 +1,7 @@
+[
+  {"tag": "G1base", "state": {"train_tag": "v10"}, "boundary": {"train_tag": "v10"}},
+  {"tag": "G2base", "state": {"only": "@v10"}, "boundary": {"only": "@v10"}},
+  {"tag": "G2rich", "state": {}, "boundary": {}},
+  {"tag": "G2baseN", "state": "model:G2base", "boundary": "model:G2base", "norm": true},
+  {"tag": "G2richN", "state": "model:G2rich", "boundary": "model:G2rich", "norm": true}
+]

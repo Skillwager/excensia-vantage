@@ -96,16 +96,17 @@ def main():
         "features": names,
         "models": models,
         "decode": decode,
-        # the simulated recordings these models learned from are smoothed as the reference is
+        # the simulated recordings these models learned from are smoothed as the reference is,
+        # so a recording that is sharper has to be brought to it before they read it
         "smoothing": ({"reference": smoothing.REFERENCE, "target": smoothing.TARGET,
-                       "windows": list(smoothing.WINDOWS)}
-                      if external.generation() == "g2" else None),
+                       "windows": list(smoothing.WINDOWS), "hold": smoothing.HOLD}
+                      if training["generation"] != "g1" else None),
         "training": {
             "matches": list(external.ALL_MATCHES),
             "rows": int(len(table)),
             "class_counts": np.bincount(target, minlength=3).tolist(),
             "data_tag": args.data_tag,
-            "generation": external.generation(),
+            "generation": training["generation"],
             "variants": args.variants,
             "rounds": args.rounds,
             "boundary_rounds": args.boundary_rounds,

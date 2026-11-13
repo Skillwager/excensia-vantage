@@ -144,6 +144,9 @@ def fold(args):
         del extra
     names, table = training["names"], training["table"]
     print("train {} rows x {} features from {}".format(len(table), len(names), train), flush=True)
+    made_by, recorded_by = training["generation"], external.generation()
+    print("tables made by simulator {}, held-out matches recorded by simulator {}".format(
+        made_by, recorded_by), flush=True)
     started = time.time()
     state_model = model.fit(
         table, training["target"], names, seed=args.seed, rounds=args.rounds,
@@ -181,7 +184,7 @@ def fold(args):
                 scores[best]["n_pred"], scores[best]["n_true"]), flush=True)
 
     with open(os.path.join(out_dir, "summary_{}.json".format(name)), "w") as handle:
-        json.dump({"test": test, "train": train,
+        json.dump({"test": test, "train": train, "generation": recorded_by, "tables": made_by,
                    "grid": [{field: getattr(config, field) for field in GRID_FIELDS}
                             for config in grid],
                    "results": results}, handle)

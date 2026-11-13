@@ -89,7 +89,8 @@ def analyse(args):
     for index, half in enumerate(halves):
         changes, share = smoothing.spread(half.ball_xy)
         halves[index], window = smoothing.for_model(half, card)
-        card["ball_path"].append({"strong_changes": changes, "share": round(share, 4),
+        card["ball_path"].append({"strong_changes": changes,
+                                  "share": round(share, 4) if share == share else None,
                                   "moving_average": window})
 
     decoded, states = [], []
