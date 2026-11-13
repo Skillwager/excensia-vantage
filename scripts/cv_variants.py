@@ -1,11 +1,11 @@
 """One cross-validation fold, several variants of the method at once. External matches only.
 
-    python scripts/cv_variants.py --spec scripts/specs/third_simulator.json --data-tag v16 \
+    python scripts/cv_variants.py --spec scripts/specs/seventh_simulator.json --data-tag g7 \
         --test J03WMX metrica1
 
 scripts/cv.py fits one method per run. This fits several in one run of a fold, so that they are
 compared on exactly the same held-out recordings, and it is how the paired comparisons in
-section 5 of the technical document were made. Each variant is written to runs/cv/<tag>/ in the
+section 6 of the technical document were made. Each variant is written to runs/cv/<tag>/ in the
 form cv.py writes a fold (prob_*.npz and summary_<test>.json), so scripts/compare_cv.py and
 `cv.py summary` read it unchanged. For the same settings the fit is the fit cv.py makes: the
 same rows in the same order, the same weights, and with it the same model, bit for bit.
@@ -33,10 +33,12 @@ and their training matches, and read back from there unless a training table is 
 that is started again does not fit them twice. A summary records which code made it, and a fold
 whose summary was made by other code is not skipped: the variant has to be given a new tag.
 
---gens lists the simulator generations the held-out matches are recorded with (g3: as the
-provided recording's tracker treats its paths; g1 and g2: the two earlier generations, see
-vantage/external.py). A variant scored under another generation than g2 is written to
-<tag>_<generation>.
+--gens lists the simulator generations the held-out matches are recorded with (g4: paths, track
+ends and the losing and finding of the ball as in the provided recording; g1 to g3: the earlier
+generations, see vantage/external.py). A variant scored under another generation than g2 is
+written to <tag>_<generation>. The tables say which generation and which code made them; tables
+of one tag made by different code are refused, and so is a fold whose summary was made from
+other code, other tables or another variant under the same tag.
 
 The training tables are held in files and mapped, not in memory, so a fold needs about 2 GB of
 memory where cv.py needs 6.
@@ -148,11 +150,12 @@ def mapped_training(tag, matches, variants, folder):
            "metrica": np.empty(total, dtype=bool),
            "copy": np.empty(total, dtype=np.int8)}
     start = 0
-    made_by = set()
+    made_by, stamps = set(), set()
     for (match, path), size, copy in zip(paths, sizes, copy_of):
         out["copy"][start:start + size] = copy
         with np.load(path) as data:
             made_by.add(str(data["generation"]) if "generation" in data.files else "not recorded")
+            stamps.add(str(data["code"]) if "code" in data.files else "not recorded")
             if [str(name) for name in data["names"]] != names:
                 raise SystemExit("feature names differ between tables: " + path)
             table[start:start + size] = data["table"]
@@ -165,7 +168,11 @@ def mapped_training(tag, matches, variants, folder):
     del table
     if len(made_by) > 1:
         raise SystemExit("the tables of {} come from different simulators: {}".format(tag, sorted(made_by)))
+    if len(stamps) > 1:
+        raise SystemExit("the tables of {} were made by different code ({}): build them again under a "
+                         "new tag".format(tag, ", ".join(sorted(stamps))))
     out["generation"] = made_by.pop()
+    out["stamp"] = stamps.pop()
     out["table"] = np.load(file, mmap_mode="r")
     out["names"] = names
     return out
@@ -199,6 +206,7 @@ def first_copies(training, copies, folder, name):
     del table
     out = {key: training[key][keep] for key in ("target", "run", "metrica", "copy")}
     out["generation"] = training["generation"]
+    out["stamp"] = training["stamp"]
     out["change"] = training["change"][:, keep]
     out["table"] = np.load(file, mmap_mode="r")
     out["names"] = training["names"]
@@ -308,16 +316,34 @@ def main():
 
     mark = code_mark()
 
+    # the code behind this stamp is kept, so that a result can be traced to what made it
+    kept = os.path.join(ROOT, "runs", "cv", "_code", mark + ".zip")
+    if not os.path.isfile(kept):
+        import zipfile
+        import vantage
+        os.makedirs(os.path.dirname(kept), exist_ok=True)
+        with zipfile.ZipFile(kept + ".tmp", "w", zipfile.ZIP_DEFLATED) as archive:
+            for folder, prefix in ((os.path.dirname(os.path.abspath(vantage.__file__)), "vantage"),
+                                   (os.path.dirname(os.path.abspath(__file__)), "scripts")):
+                for file in sorted(os.listdir(folder)):
+                    if file.endswith(".py"):
+                        archive.write(os.path.join(folder, file), prefix + "/" + file)
+            archive.write(args.spec, "spec.json")
+        os.replace(kept + ".tmp", kept)
+
     def done(variant):
         for gen in variant.get("gens", args.gens):
             path = os.path.join(ROOT, "runs", "cv", out_tag(variant["tag"], gen), "summary_{}.json".format(name))
             if not os.path.isfile(path):
                 return False
             with open(path) as handle:
-                made_by = json.load(handle).get("code")
-            if made_by is not None and made_by != mark:
-                raise SystemExit("{} was made by other code ({}, now {}): give the variant a new tag".format(
-                    path, made_by, mark))
+                was = json.load(handle)
+            now = {"code": mark, "data_tag": args.data_tag, "variant": variant,
+                   "conditions": sorted(args.conditions or external.CONDITIONS)}
+            for key, value in now.items():
+                if was.get(key) != value:
+                    raise SystemExit("{} was made with another {} ({} then, {} now): give the variant a new "
+                                     "tag".format(path, key.replace("_", " "), was.get(key), value))
         return True
 
     todo = [variant for variant in spec if not done(variant)]
@@ -354,6 +380,14 @@ def main():
         return os.path.join(ROOT, "runs", "cv", "_models", name, digest + ".txt")
 
     newest = {}             # data tag -> when its newest training table was written
+    stamps = {}             # data tag -> the stamp of the code that made its tables
+    records = {}            # id(booster) -> the record kept with the stored model
+
+    def stamp_of(tag):
+        if tag not in stamps:
+            with np.load(external.train_table_path(tag, train[0], 1, 0, "own")) as data:
+                stamps[tag] = str(data["code"]) if "code" in data.files else "not recorded"
+        return stamps[tag]
 
     def fresh(key, settings):
         """A stored model is read back only if none of its training tables is newer than it."""
@@ -369,8 +403,16 @@ def main():
         if (key not in fitted and os.path.isfile(store(key, settings)) and os.path.isfile(store(key, settings) + ".json")
                 and fresh(key, settings)):
             with open(store(key, settings) + ".json") as handle:
-                fitted[key] = (lightgbm.Booster(model_file=store(key, settings)), json.load(handle)["features"])
-            log("read {} {} from {}".format(kind, json.dumps(settings, sort_keys=True), store(key, settings)))
+                record = json.load(handle)
+            # only a model fitted on the tables that are there now
+            tables_now = stamp_of(settings.get("train_tag", args.data_tag))
+            if record.get("tables", "not recorded") == tables_now:
+                fitted[key] = (lightgbm.Booster(model_file=store(key, settings)), record["features"])
+                records[id(fitted[key][0])] = dict(record, features=len(record["features"]), read_back=True)
+                log("read {} {} from {}".format(kind, json.dumps(settings, sort_keys=True), store(key, settings)))
+            else:
+                log("stored {} {} was fitted on other tables ({} then, {} now): fitted again".format(
+                    kind, json.dumps(settings, sort_keys=True), record.get("tables", "not recorded"), tables_now))
         if key not in fitted:
             tag = settings.get("train_tag", args.data_tag)
             training = training_for(tag)
@@ -400,12 +442,15 @@ def main():
                 kind, json.dumps(settings, sort_keys=True), len(used), time.time() - started))
             os.makedirs(os.path.dirname(store(key, settings)), exist_ok=True)
             booster.save_model(store(key, settings) + ".tmp")
+            record = {"kind": kind, "settings": settings, "features": used, "train": train,
+                      "code": mark, "tables": training["stamp"],
+                      "data_tag": tag, "variants": args.variants}
             with open(store(key, settings) + ".json", "w") as handle:
-                json.dump({"kind": kind, "settings": settings, "features": used, "train": train,
-                           "data_tag": tag, "variants": args.variants}, handle)
+                json.dump(record, handle)
             os.replace(store(key, settings) + ".tmp", store(key, settings))
             del booster
             fitted[key] = (lightgbm.Booster(model_file=store(key, settings)), used)
+            records[id(fitted[key][0])] = dict(record, features=len(used), read_back=False)
         return fitted[key]
 
     by_tag = {variant["tag"]: variant for variant in spec}
@@ -508,12 +553,16 @@ def main():
                     log("{:<12} {} {:<8} {:<9} best spellF1 {:.3f} macroF1 {:.3f} poss {}/{}".format(
                         tag, gen, condition, match, scores[best]["spellF1"], scores[best]["macroF1"],
                         scores[best]["n_pred"], scores[best]["n_true"]))
-        for variant, _, _ in variants:
+        for variant, state, boundary in variants:
             tag = variant["tag"]
             path = os.path.join(ROOT, "runs", "cv", out_tag(tag, gen), "summary_{}.json".format(name))
+            # which models gave this variant its answers, each from the model's own record
+            models = {which: (entry if isinstance(entry, str) else records.get(id(entry[0])))
+                      for which, entry in (("state", state), ("boundary", boundary))}
             with open(path, "w") as handle:
                 json.dump({"test": test, "train": train, "generation": gen, "code": mark,
-                           "data_tag": args.data_tag, "edges": os.environ.get("VANTAGE_EDGES", ""),
+                           "data_tag": args.data_tag, "variant": by_tag[tag], "models": models,
+                           "conditions": sorted(args.conditions or external.CONDITIONS),
                            "grid": [{field: getattr(config, field) for field in cvlib.GRID_FIELDS}
                                     for config in grid],
                            "results": results[tag]}, handle)

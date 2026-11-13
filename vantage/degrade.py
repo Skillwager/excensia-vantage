@@ -72,6 +72,67 @@ class DegradeConfig:
     live_loss_rate: float = 0.5       # losses per minute of live play
     live_loss_median: float = 6.0     # s
     until_restart: float = 0.35       # chance a live loss lasts until the next restart
+    find_at_kick: float = 0.0         # chance a hidden ball is picked up again at a kick: the frame
+                                      # after a player strikes it, with the ball still at his feet
+    lose_at_player: float = 0.0       # chance a ball lost in live play is lost as it reaches a
+                                      # player, not out in the open
+    find_offset: int = 1              # frames after the kick at which such a track begins
+    find_at_kick_restart: float = -1.0  # the same chance for the pick-up after a restart, where it
+                                      # differs (below 0: the same)
+    lose_at_player_dead: float = 0.0  # chance the ball is lost as it reaches a player when play
+                                      # has stopped
+    soften_first: bool = True         # the short average that stands for a real kick runs over
+                                      # the true path before anything is hidden (generation 3)
+                                      # or, when False, inside each track after it
+    find_lag_spread: float = 0.0      # 0: the time from a restart to the pick-up is drawn as it
+                                      # always was (exponential, mean find_lag). Above 0: a
+                                      # restart is picked up at once with chance find_quick
+                                      # (exponential, mean find_lag_quick); otherwise the
+                                      # logarithm of the time is drawn around find_lag with this
+                                      # spread and the pick-up is at the first kick after it: a
+                                      # ball restarted through the air is not tracked until it
+                                      # is played on the ground
+    find_quick: float = 0.3
+    find_lag_quick: float = 0.3       # s
+    live_loss_spread: float = 0.9     # spread of the length of a live loss (of its logarithm)
+    ball_blips: float = 0.0           # losses of under a second, per minute of live play
+    min_gap: float = 0.0              # s: a loss shorter than this is not reported as one. The
+                                      # recording has no gap between 0.6 and 5 seconds: its
+                                      # tracker bridges a ball it loses for less (here the true
+                                      # path stands for the bridge)
+    blip_frames: tuple = ()           # (shortest, longest) loss in frames that is reported all the
+                                      # same; empty: blips last 0.2 to 0.9 s, as first drawn
+    blip_fast: float = 0.0            # how much more often a blip falls where the ball is fast
+                                      # (0: anywhere)
+    hold_loss: float = 0.0            # chance that a ball which lies still within a player's
+                                      # reach (a keeper holding it, a defender standing on it,
+                                      # whoever is about to take a free kick) is lost until it
+                                      # is struck, whether play is live or not. Under min_gap
+                                      # such a loss is bridged like any other
+    hold_delay: float = 0.0           # s: mean time the ball has lain there when it is lost
+    restart_back: int = 3             # frames before the labelled restart from which the strike
+                                      # that restarts play is looked for
+    restart_wait: float = 4.0         # s from there for which it is looked for (KICK_WAIT)
+    until_restart_as_restart: bool = False  # a ball lost in play until the next restart is picked
+                                      # up as any restart is, not as a ball lost in play is
+    wander_roll: bool = False         # the path drawn for a stoppage the tracker follows begins
+                                      # with the ball's own motion: it rolls on and dies away,
+                                      # as a ball does when the whistle goes
+    follow_short_gap: bool = False    # a stoppage whose own gap would come out shorter than
+                                      # min_gap is followed (its ball is drawn) and not bridged
+                                      # with what the source has there
+    wander_soft: bool = False         # the path drawn for a followed stoppage has no motion that
+                                      # no ball has: the roll-on is slowed as grass slows a ball,
+                                      # no pass is faster than 20 m/s, and the wait at the
+                                      # restart spot begins without a hop
+    height_fall: int = 0              # frames over which a ball that is in the air when play
+                                      # stops comes down (0: it is on the ground at once, which
+                                      # the camera's parallax shows as a step)
+    false_floor_strict: bool = False  # two false tracks in one gap may not leave a piece under
+                                      # the floor between them either
+    wander_smooth: int = 1            # frames: the path drawn for a ball that is followed through
+                                      # a stoppage is averaged over this many, so that it has no
+                                      # kick that nobody made
     w_air: float = 1.0                # how much height, speed and crowding raise the loss rate
     w_fast: float = 0.6
     w_crowd: float = 0.6
@@ -148,6 +209,87 @@ def sample_config(rng):
     )
 
 
+def sample_config_found_at_kicks(rng):
+    """One random noise setting for a tracker that picks the ball up at a kick and loses it at a
+    player (the fourth generation, see vantage/external.py). The ranges that say how often and for
+    how long the ball is lost in live play sit around what the recording shows without labels;
+    the rest are the ranges of `sample_config`."""
+    base = sample_config(rng)
+    return replace(
+        base,
+        dead_watched=float(rng.uniform(0.1, 0.7)),
+        early_find=float(rng.uniform(0.0, 0.25)),
+        find_quick=float(rng.uniform(0.1, 0.45)),
+        find_lag_quick=float(rng.uniform(0.2, 1.0)),
+        find_lag=float(rng.uniform(2.0, 3.8)),
+        find_lag_spread=float(rng.uniform(0.3, 0.6)),
+        live_loss_rate=float(np.exp(rng.uniform(np.log(1.0), np.log(4.0)))),
+        live_loss_median=float(rng.uniform(5.0, 11.0)),
+        live_loss_spread=float(rng.uniform(0.3, 0.7)),
+        until_restart=float(rng.uniform(0.05, 0.35)),
+        find_at_kick=float(rng.uniform(0.6, 1.0)),
+        find_at_kick_restart=float(rng.uniform(0.0, 0.6)),
+        lose_at_player=float(rng.uniform(0.3, 1.0)),
+        lose_at_player_dead=float(rng.uniform(0.0, 0.6)),
+        soften_first=False,
+        find_offset=int(rng.choice((-1, 0, 1))),
+        ball_blips=float(rng.uniform(0.0, 0.4)),
+    )
+
+
+def sample_config_fifth(rng):
+    """One random noise setting of the fifth generation (see vantage/external.py): the ranges sit
+    around what the recording shows without labels, and what cannot be read off it is drawn
+    widely. A pick-up at a kick and a loss at a player have one chance each, in play and out of
+    it alike, so that how a gap begins or ends does not say whether play had stopped."""
+    base = sample_config(rng)
+    at_kick = float(rng.uniform(0.6, 1.0))
+    at_player = float(rng.uniform(0.5, 1.0))
+    return replace(
+        base,
+        dead_watched=float(rng.uniform(0.05, 0.55)),
+        dead_watched_in=float(rng.uniform(0.15, 0.7)),
+        early_find=float(rng.uniform(0.0, 0.25)),
+        find_quick=float(rng.uniform(0.6, 1.0)),
+        find_lag_quick=float(rng.uniform(0.05, 0.3)),
+        find_lag=float(rng.uniform(0.6, 1.6)),
+        find_lag_spread=float(rng.uniform(0.3, 0.6)),
+        restart_back=12,
+        restart_wait=1.0,
+        until_restart_as_restart=True,
+        live_loss_rate=float(np.exp(rng.uniform(np.log(0.5), np.log(3.0)))),
+        live_loss_median=float(rng.uniform(5.5, 10.0)),
+        live_loss_spread=float(rng.uniform(0.5, 0.9)),
+        until_restart=float(rng.uniform(0.03, 0.25)),
+        find_at_kick=at_kick,
+        find_at_kick_restart=at_kick,
+        lose_at_player=at_player,
+        lose_at_player_dead=at_player,
+        hold_loss=float(rng.uniform(0.5, 1.0)),
+        hold_delay=float(rng.uniform(0.2, 1.0)),
+        min_gap=5.36,
+        ball_blips=float(rng.uniform(0.0, 0.3)),
+        blip_frames=(6, 12),
+        blip_fast=100.0,
+        soften_first=False,
+        find_offset=int(rng.choice((-1, 0, 1))),
+    )
+
+
+SIXTH_ONLY = dict(wander_roll=True, follow_short_gap=True, false_floor_strict=True, blip_frames=(6, 16))
+SEVENTH_ONLY = dict(SIXTH_ONLY, wander_soft=True, height_fall=12)
+
+
+def sample_config_sixth(rng):
+    """One random noise setting of the sixth generation: the fifth's, with the sixth's rules."""
+    return replace(sample_config_fifth(rng), **SIXTH_ONLY)
+
+
+def sample_config_seventh(rng):
+    """One random noise setting of the seventh generation: the fifth's, with the seventh's rules."""
+    return replace(sample_config_fifth(rng), **SEVENTH_ONLY)
+
+
 # -- helpers -----------------------------------------------------------------------------------
 
 def _runs(flag):
@@ -203,7 +345,7 @@ def _frames(seconds):
 
 # -- ball visibility ---------------------------------------------------------------------------
 
-def _wander(half, rng, start, stop, ball):
+def _wander(half, rng, start, stop, ball, roll=False, soft=False):
     """Where the ball is during a stoppage the tracker follows right through, (stop - start, 2).
 
     It starts where play stopped and ends where play restarts. In between it is moved about in
@@ -225,17 +367,55 @@ def _wander(half, rng, start, stop, ball):
     # the ball reaches the restart spot some way through and waits there with the taker
     settle = max(_frames(0.3), int(rng.uniform(0.1, 0.7) * (stop - start)))
     frame = start
+    velocity = None
+    if roll and start > 2 and np.isfinite(ball[start - 1, 0]) and np.isfinite(ball[start - 3, 0]):
+        # the ball does not stop because play does
+        velocity = (ball[start - 1] - ball[start - 3]).astype(np.float32) * np.float32(FPS / 2.0)
+        room = stop - start - settle - 2 * FPS
+        if room > FPS // 2:
+            stage = min(_frames(rng.uniform(0.6, 2.0)), room)
+            seconds = (np.arange(1, stage + 1, dtype=np.float32) / np.float32(FPS))[:, None]
+            if soft:
+                # slowed at a steady rate, as grass slows a ball, and at rest by the stage's end
+                speed = float(np.sqrt(np.sum(velocity * velocity)))
+                slow = max(float(rng.uniform(0.4, 1.5)), speed / (stage / float(FPS)))
+                moving = np.minimum(seconds, np.float32(speed / slow))
+                heading = velocity / np.float32(speed) if speed > 0.05 else np.zeros(2, dtype=np.float32)
+                out[:stage] = position + heading * (np.float32(speed) * moving - np.float32(0.5 * slow) * moving * moving)
+            else:
+                out[:stage] = position + velocity * (1.0 - np.exp(-seconds))
+            position = out[stage - 1].copy()
+            frame = start + stage
+            velocity = None                         # spent: what follows starts from near rest
+        elif soft and room > 0:
+            settle += room                          # no room for a roll: the path bends to the spot
     while frame < stop:
         remaining = stop - frame
         row = frame - start
         if remaining <= settle + 2 * FPS:
             travel = max(1, min(remaining - settle, 3 * FPS))
+            if soft:
+                # not faster than a hard pass: the way to the restart spot takes the time it needs,
+                # out of the time the ball would have waited there
+                need = int(np.ceil(float(np.sqrt(np.sum((last - position) ** 2))) / 0.8))
+                travel = max(travel, min(remaining, need))
             weight = (np.arange(1, travel + 1) / float(travel))[:, None]
-            out[row:row + travel] = (1 - weight) * position + weight * last
+            if velocity is not None and row == 0:
+                # a short stoppage: the path leaves at the ball's own velocity and bends to the
+                # restart spot (a cubic that has that velocity at its start and none at its end)
+                u = weight.astype(np.float32)
+                seconds = np.float32(travel / float(FPS))
+                out[row:row + travel] = ((2 * u ** 3 - 3 * u ** 2 + 1) * position
+                                         + (u ** 3 - 2 * u ** 2 + u) * seconds * velocity
+                                         + (-2 * u ** 3 + 3 * u ** 2) * last)
+            else:
+                out[row:row + travel] = (1 - weight) * position + weight * last
             waiting = remaining - travel
             if waiting > 0:
                 sway = _smooth_noise(rng, (waiting, 2), rng.uniform(0.3, 1.6), 1.5 * FPS)
                 sway *= np.minimum(1.0, np.arange(waiting, 0, -1) / float(FPS))[:, None]
+                if soft:
+                    sway *= np.minimum(1.0, np.arange(1, waiting + 1) / float(FPS))[:, None]   # no hop
                 out[row + travel:] = last + sway
             break
         stage = max(1, min(remaining - settle - 2 * FPS, _frames(rng.uniform(0.5, 3.5))))
@@ -269,6 +449,10 @@ def _wander(half, rng, start, stop, ball):
             gap = float(np.sqrt(np.sum((target - position) ** 2)))
             speed = float(np.clip(np.exp(rng.normal(np.log(4.5), 0.5)), 1.5, 14.0))
             stage = max(1, min(stage, int(np.ceil(gap / speed * FPS)) + _frames(rng.uniform(0.0, 0.6))))
+            if soft and gap > 20.0 * stage / float(FPS):
+                # there is not the time to get there: it goes as far as a hard pass would
+                target = position + (target - position) * np.float32(20.0 * stage / float(FPS) / gap)
+                gap = 20.0 * stage / float(FPS)
             rows = slice(row, row + stage)
             travel = max(1, min(stage, int(np.ceil(gap / speed * FPS))))
             weight = np.minimum(np.arange(1, stage + 1) / float(travel), 1.0)[:, None]
@@ -279,10 +463,56 @@ def _wander(half, rng, start, stop, ball):
     return np.clip(out, -edge, edge)
 
 
-def _hidden_ball(half, rng, config, ball, height):
+KICK_CHANGE = 4.0       # m/s: a change of the true ball's velocity over four frames that is a kick
+KICK_REACH = 1.5        # m: with a player this near
+AT_PLAYER = 1.0         # m: the ball has reached a player when one is this near
+KICK_WAIT = 4.0         # s: how long a find or a loss is put off to wait for a kick or an arrival
+HOLD_REACH = 1.5        # m: a ball this near a player
+HOLD_SPEED = 2.5        # m/s: and slower than this is with him, not on its way
+
+
+def _kicks_and_arrivals(ball, home_xy, away_xy):
+    """(kick, near, nearest): frames at which the true ball is struck, frames on which it is at
+    a player, and how far the nearest player is. A kick is a change of velocity of KICK_CHANGE or
+    more over four frames with a player within KICK_REACH, taken where the change is largest."""
+    t = len(ball)
+    nearest = np.full(t, np.inf)
+    for team in (home_xy, away_xy):
+        delta = team - ball[:, None, :]
+        distance = np.sqrt(np.sum(delta * delta, axis=-1))
+        nearest = np.minimum(nearest, np.where(np.isfinite(distance), distance, np.inf).min(axis=1))
+    ball = ball.astype(np.float64)
+    velocity = np.full(ball.shape, np.nan)
+    velocity[1:-1] = (ball[2:] - ball[:-2]) * (FPS / 2.0)
+    change = np.zeros(t)
+    delta = velocity[4:] - velocity[:-4]
+    change[2:-2] = np.nan_to_num(np.sqrt(np.sum(delta * delta, axis=1)))
+    kick = (change >= KICK_CHANGE) & (nearest <= KICK_REACH)
+    for offset in (1, 2):
+        kick[offset:] &= change[offset:] >= change[:-offset]
+        kick[:-offset] &= change[:-offset] > change[offset:]
+    return kick, nearest <= AT_PLAYER, nearest
+
+
+def _next(flag, frame, wait):
+    """The first frame at or after `frame` where `flag` is true, or None if there is none within
+    `wait` frames."""
+    stop = min(len(flag), frame + wait + 1)
+    if frame >= stop:
+        return None
+    hits = np.flatnonzero(flag[frame:stop])
+    return frame + int(hits[0]) if len(hits) else None
+
+
+def _hidden_ball(half, rng, config, ball, height, own):
     """(hidden, held, followed): frames on which the tracker reports no ball; frames of stoppages
     it follows right through on which a ball that is off the pitch is still reported, at its
-    edge; and the (start, stop) of the stoppages it follows right through."""
+    edge; and the (start, stop) of the stoppages it follows right through.
+
+    `rng` makes the draws the simulator has always made, in the same order. Everything that was
+    added later (the pick-up at a kick, the loss at a player, the late pick-up after a restart,
+    the blips) draws from `own`, so the earlier generations come out as they did.
+    """
     t = half.n_frames
     dead = (half.labels == D) if half.labels is not None else np.zeros(t, dtype=bool)
     hidden = np.zeros(t, dtype=bool)
@@ -292,6 +522,12 @@ def _hidden_ball(half, rng, config, ball, height):
 
     length, width = half.pitch
     margin = np.minimum(length / 2 - np.abs(ball[:, 0]), width / 2 - np.abs(ball[:, 1]))
+    at_restart = config.find_at_kick if config.find_at_kick_restart < 0 else config.find_at_kick_restart
+    snap = max(config.find_at_kick, at_restart, config.lose_at_player, config.lose_at_player_dead) > 0
+    timing = config.find_lag_spread > 0
+    wait = _frames(KICK_WAIT)
+    if snap:
+        kick, at_player, nearest = _kicks_and_arrivals(ball, half.home_xy, half.away_xy)
     for start, stop in stoppages:
         short = stop - start < 5 * FPS
         # Does the ball leave the pitch as play stops? A ball that stays on it (a foul, an
@@ -304,6 +540,11 @@ def _hidden_ball(half, rng, config, ball, height):
             watched = config.dead_watched
         else:
             watched = config.dead_watched_in if stop - start < 10 * FPS else config.dead_watched
+        if config.min_gap > 0 and stop - start < _frames(config.min_gap):
+            # A tracker that reports no gap this short bridges the stoppage. What it shows is
+            # drawn as for a stoppage it follows: the source's own ball stands still there, or
+            # is missing, and would give the stoppage away.
+            watched = 1.0
         if rng.random() < watched:
             # This stoppage is tracked throughout.
             followed.append((start, stop))
@@ -318,11 +559,40 @@ def _hidden_ball(half, rng, config, ball, height):
         if rng.random() < config.early_find:
             find = stop - _frames(rng.exponential(config.early_find_mean))
         else:
-            # The usual case: the ball is picked up once it is moving again after the restart.
+            # The ball is picked up once it is moving again after the restart.
             find = stop + _frames(rng.exponential(config.find_lag))
-            if rng.random() < config.long_miss:
+            late = False
+            if timing:
+                if own.random() < config.find_quick:
+                    find = stop + _frames(own.exponential(config.find_lag_quick))
+                else:
+                    late = True
+                    find = stop + _frames(float(np.exp(own.normal(np.log(config.find_lag),
+                                                                  config.find_lag_spread))))
+            missed = rng.random() < config.long_miss
+            if missed:
                 find += _frames(rng.exponential(8.0))
+            if snap and own.random() < at_restart:
+                # picked up as it is struck: at the restart itself, or at the first kick after
+                # the time drawn when the pick-up is late
+                if late or missed:
+                    struck = _next(kick, max(0, find), wait)
+                else:
+                    struck = _next(kick, max(0, stop - config.restart_back),
+                                   _frames(config.restart_wait))
+                if struck is not None:
+                    find = struck + config.find_offset
+        if snap and own.random() < config.lose_at_player_dead:
+            # lost as it reaches somebody: the player who fetches it, the keeper who gathers it
+            reached = _next(at_player, max(0, lose), wait)
+            if reached is not None and reached < find:
+                lose = reached
         lose, find = max(0, lose), min(t, find)
+        if config.follow_short_gap and config.min_gap > 0 and find - lose < _frames(config.min_gap):
+            # too short a gap for this tracker to report: it follows the stoppage, and what it
+            # shows is drawn, not taken from the source
+            followed.append((start, stop))
+            continue
         if find > lose:
             hidden[lose:find] = True
 
@@ -341,13 +611,86 @@ def _hidden_ball(half, rng, config, ball, height):
         restarts = np.array([stop for _, stop in stoppages] + [t], dtype=np.int64)
         for _ in range(int(rng.poisson(expected))):
             start = int(rng.choice(t, p=risk / risk.sum()))
-            if rng.random() < config.until_restart:
+            to_restart = rng.random() < config.until_restart
+            if to_restart:
                 stop = int(restarts[np.searchsorted(restarts, start, side="right")])
             else:
-                length = np.exp(rng.normal(np.log(config.live_loss_median), 0.9))
+                length = np.exp(rng.normal(np.log(config.live_loss_median), config.live_loss_spread))
                 stop = start + _frames(float(np.clip(length, 0.3, 90.0)))
+            if snap:
+                if own.random() < config.lose_at_player:
+                    reached = _next(at_player, start, wait)
+                    if reached is not None and reached < stop:
+                        start = reached
+                if to_restart and config.until_restart_as_restart:
+                    if own.random() < at_restart:
+                        struck = _next(kick, max(0, min(t - 1, stop) - config.restart_back),
+                                       _frames(config.restart_wait))
+                        if struck is not None:
+                            stop = struck + config.find_offset
+                elif own.random() < config.find_at_kick:
+                    struck = _next(kick, min(t - 1, stop), wait)
+                    if struck is not None:
+                        stop = struck + config.find_offset
             hidden[start:min(t, stop)] = True
     return hidden, held, followed
+
+
+def _speed(ball):
+    """The ball's speed on every frame from the positions either side, 0 where it has none."""
+    velocity = np.zeros_like(ball)
+    velocity[1:-1] = (ball[2:] - ball[:-2]) * (FPS / 2.0)
+    return np.nan_to_num(np.sqrt(np.sum(velocity * velocity, axis=1)))
+
+
+def _blips(config, own, ball):
+    """Frames lost for under a second, anywhere in the half: in a stoppage the tracker follows as
+    well. With blip_fast they fall where the ball, as the tracker has it, is fast."""
+    t = len(ball)
+    brief = np.zeros(t, dtype=bool)
+    if config.ball_blips > 0:
+        chance = None
+        if config.blip_fast > 0:
+            # a hard pass, a shot, a cross
+            chance = 1.0 + config.blip_fast * np.clip((_speed(ball) - 8.0) / 8.0, 0.0, 2.0)
+            chance = chance / chance.sum()
+        for _ in range(int(own.poisson(config.ball_blips * t / (FPS * 60.0)))):
+            start = int(own.integers(0, t)) if chance is None else int(own.choice(t, p=chance))
+            if config.blip_frames:
+                frames = int(own.integers(config.blip_frames[0], config.blip_frames[1] + 1))
+            else:
+                frames = _frames(float(own.uniform(0.2, 0.9)))
+            brief[start:min(t, start + frames)] = True
+    return brief
+
+
+def _resting(ball, home_xy, away_xy, config, stream):
+    """Frames on which a ball that lies still within a player's reach is lost to the tracker.
+
+    A ball at a player's feet or in his hands is not seen apart from him; it is found again as
+    it is struck. The rule reads the ball and the players and nothing else: whether play is
+    live does not come into it. A keeper holding the ball and a free kick waiting to be taken
+    are lost in the same way, which is what the recording shows (most of its gaps of five to
+    ten seconds begin and end in open field with the ball a few metres from where it was).
+    """
+    t = len(ball)
+    out = np.zeros(t, dtype=bool)
+    nearest = np.full(t, np.inf)
+    for team in (home_xy, away_xy):
+        delta = team - ball[:, None, :]
+        distance = np.sqrt(np.sum(delta * delta, axis=-1))
+        nearest = np.minimum(nearest, np.where(np.isfinite(distance), distance, np.inf).min(axis=1))
+    gone = np.full(t, np.inf)
+    moved = ball[5:].astype(np.float64) - ball[:-5]
+    gone[2:-3] = np.nan_to_num(np.sqrt(np.sum(moved * moved, axis=1)) * (FPS / 5.0), nan=np.inf)
+    still = (nearest <= HOLD_REACH) & (gone < HOLD_SPEED)
+    least = _frames(max(config.min_gap, 1.0))
+    for start, stop in _runs(still):
+        delay = _frames(float(stream.exponential(config.hold_delay))) if config.hold_delay > 0 else 0
+        lost = stream.random() < config.hold_loss
+        if lost and stop - start - delay >= least:
+            out[start + delay:stop] = True
+    return out
 
 
 # -- the simulator -----------------------------------------------------------------------------
@@ -361,15 +704,34 @@ def degrade(half, rng, config):
     ball = half.ball_xy.astype(np.float32).copy()
     height = half.ball_z if half.ball_z is not None else np.zeros(t, dtype=np.float32)
     height = np.nan_to_num(height, nan=0.0)
-    hidden, held, followed = _hidden_ball(half, rng, config, ball, height)
+    # two streams of their own for what was added later, so that every earlier draw stays: the
+    # first is the jitter's, as it always was, the second is for losing and finding the ball
+    jitter_stream, own_stream, late_stream = rng.bit_generator.seed_seq.spawn(3)
+    own = np.random.default_rng(own_stream)
+    hidden, held, followed = _hidden_ball(half, rng, config, ball, height, own)
     # Through a stoppage the tracker follows, the ball is moved about by the players. Corrected
     # data freezes it or drops it there, so its path is drawn here.
     for start, stop in followed:
-        path = _wander(half, rng, start, stop, ball)
+        path = _wander(half, rng, start, stop, ball, config.wander_roll, config.wander_soft)
         if path is not None:
             ball[start:stop] = path
             height[start:stop] = 0.0
+            if config.height_fall > 0 and start > 0:
+                frames = min(config.height_fall, stop - start)
+                height[start:start + frames] = height[start - 1] * (
+                    1.0 - np.arange(1, frames + 1, dtype=np.float32) / np.float32(config.height_fall))
+            if config.wander_smooth > 1:
+                # the drawn path and its joins with the true one, without a sudden change
+                low = max(0, start - config.wander_smooth)
+                high = min(t, stop + config.wander_smooth)
+                ball[low:high] = _moving_average(ball[low:high], config.wander_smooth)
     unavailable = ~np.isfinite(ball[:, 0])              # the source itself has no ball here
+    # On the path as it now stands, drawn stoppages and all: the losses of under a second, and
+    # the ball that lies still with a player.
+    brief = _blips(config, own, ball)
+    hidden |= brief
+    if config.hold_loss > 0:
+        hidden |= _resting(ball, half.home_xy, half.away_xy, config, np.random.default_rng(late_stream))
 
     # -- where the ball is reported: single-camera parallax and a slow error ---------------
     camera = np.array([config.camera_x, -(width / 2 + config.camera_back)], dtype=np.float32)
@@ -380,16 +742,15 @@ def degrade(half, rng, config):
     average = _moving_average
     jitter = None
     if config.ball_jitter > 0:
-        # its own stream of random numbers, so that everything else is drawn as before
-        own = np.random.default_rng(rng.bit_generator.seed_seq.spawn(1)[0])
-        jitter = own.normal(0.0, config.ball_jitter, size=reported.shape).astype(np.float32)
+        jitter = np.random.default_rng(jitter_stream).normal(
+            0.0, config.ball_jitter, size=reported.shape).astype(np.float32)
     if config.edges == "through":
         reported = average(reported, config.ball_smooth)
         if config.ball_smooth2 > 1:
             reported = average(reported, config.ball_smooth2)
         if jitter is not None:
             reported = reported + jitter
-    elif config.edges == "keep" and config.ball_smooth2 > 1:
+    elif config.edges == "keep" and config.ball_smooth2 > 1 and config.soften_first:
         # A real kick is not as sudden as the open matches draw it. That is the ball, not the
         # tracker, so this short average runs over the true path, before anything is hidden.
         reported = average(reported, config.ball_smooth2)
@@ -401,12 +762,24 @@ def degrade(half, rng, config):
     margin = np.minimum(length / 2 - np.abs(ball[:, 0]), width / 2 - np.abs(ball[:, 1]))
     with np.errstate(invalid="ignore"):
         hidden |= (margin < -config.out_margin) & ~held
+    if config.min_gap > 0:
+        # A tracker that joins its tracks up reports no short gap: a ball it loses for less
+        # than min_gap it bridges, whatever made it lose the ball. Such a gap is given back, and
+        # the true path stands for the bridge. Only the losses of under a second stay.
+        least = _frames(config.min_gap)
+        for start, stop in _runs(hidden):
+            if stop - start < least and start > 0 and stop < t and not unavailable[start:stop].any():
+                hidden[start:stop] = brief[start:stop]
     edge = np.array([length / 2 + 0.3, width / 2 + 0.3], dtype=np.float32)
     reported[held] = np.clip(reported[held], -edge, edge)
     reported[hidden] = np.nan
     if config.edges != "through":
         # the tracker smooths what it has: the frames it lost are gone before the average runs
         if config.edges == "keep":
+            if config.ball_smooth2 > 1 and not config.soften_first:
+                # inside each track, keeping its speed at both ends: nothing of the frames the
+                # tracker did not have is in it
+                reported = track_average(reported, config.ball_smooth2, end="carry")
             reported = track_average(reported, config.ball_smooth, config.track_hold)
             hidden = ~np.isfinite(reported[:, 0])
         else:
@@ -418,6 +791,7 @@ def degrade(half, rng, config):
 
     # -- a track that is not the ball -------------------------------------------------------
     minutes_hidden = hidden.sum() / (FPS * 60.0)
+    gap_left = hidden.copy()                 # the gaps as they stand once false tracks are drawn in
     for _ in range(int(rng.poisson(config.false_rate * minutes_hidden))):
         candidates = np.flatnonzero(hidden)
         start = int(rng.choice(candidates))
@@ -428,7 +802,23 @@ def degrade(half, rng, config):
         rows = slice(start, stop)
         fake = (spot[None, :] + drift[None, :] * seconds).astype(np.float32)
         keep = hidden[rows]
+        if config.min_gap > 0:
+            # a tracker that reports no short gap does not report one beside a false track
+            # either: the pieces of the gap left on both sides are long, or there are none
+            shortest = _frames(config.min_gap) - config.track_hold
+            around = gap_left if config.false_floor_strict else hidden
+            low = start
+            while low > 0 and around[low - 1]:
+                low -= 1
+            high = min(stop, t)
+            while high < t and around[high]:
+                high += 1
+            if 0 < start - low < shortest or (around[min(stop, t) - 1] and 0 < high - min(stop, t) < shortest):
+                continue
+            if config.false_floor_strict and not around[start]:
+                continue                            # this spot already has a false track
         reported[rows][keep] = fake[keep]
+        gap_left[rows] = False
 
     # -- players ---------------------------------------------------------------------------
     dead = (half.labels == D) if half.labels is not None else np.zeros(t, dtype=bool)

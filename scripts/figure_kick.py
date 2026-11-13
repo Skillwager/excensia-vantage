@@ -194,7 +194,7 @@ def main():
             "frames": list(range(-REACH, REACH + 1)),
             "recording": average([half.ball_xy for half in competition.load_halves(args.data_dir)]),
             "first": simulated("g1"),
-            "now": simulated("g2"),
+            "now": simulated("g7"),
         }
         with open(stored, "w", encoding="utf-8", newline="\n") as handle:
             json.dump(numbers, handle, indent=1)

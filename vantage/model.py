@@ -9,7 +9,7 @@ values are the central fact of this data.
 import numpy as np
 
 from . import A, H
-from .features import build
+from .features import build, is_extended
 
 PARAMS = {
     "objective": "multiclass",
@@ -65,10 +65,12 @@ def _tables(half, names):
     """The feature tables of a half and of its mirror image, with the columns a model expects.
 
     `names` is the model's own feature list. Features the builder has gained since the model was
-    trained are left out; a feature the model needs and the builder lacks is an error.
+    trained are left out; a feature the model needs and the builder lacks is an error. The
+    extended columns are built only for a model that reads one of them.
     """
-    own_names, table = build(half)
-    _, mirrored = build(half.swapped())
+    extended = names is None or any(is_extended(name) for name in names)
+    own_names, table = build(half, extended)
+    _, mirrored = build(half.swapped(), extended)
     if names is None or list(names) == list(own_names):
         return table, mirrored
     missing = [name for name in names if name not in own_names]

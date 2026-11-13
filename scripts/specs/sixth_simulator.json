@@ -1,0 +1,5 @@
+[
+  {"tag": "G1x", "state": {"train_tag": "v10"}, "boundary": {"train_tag": "v10"}},
+  {"tag": "S6base", "state": {"only": "@v10"}, "boundary": {"only": "@v10"}},
+  {"tag": "S6all", "state": {}, "boundary": {}}
+]

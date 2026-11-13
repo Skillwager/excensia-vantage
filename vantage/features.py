@@ -20,7 +20,7 @@ import warnings
 
 import numpy as np
 
-from . import A, FPS, H
+from . import A, FPS, H, corners
 
 # -- parameters --------------------------------------------------------------------------------
 # These describe measurement, not football: how far apart two samples must be to estimate a
@@ -40,6 +40,14 @@ TOUCH_RADIUS = 3.0             # m: with a player this close
 TOUCH_MARGIN = 0.3             # m: and that much nearer than any opponent
 TOUCH_RUN_CAP = 6.0            # touches in a row are counted up to this
 TIME_CAP = 30.0                # s: "how long since / until" features saturate here
+TOUCH_WIDE = 10                # frames either side: a touch as a path smoothed over 21 frames shows it
+CARRY_RADIUS = 1.5             # m: the ball this close to a player
+CARRY_SPEED = 2.0              # m/s: and moving with him to within this
+CARRY_MARGIN = 0.5             # m: and that much nearer than any opponent
+END_BACK = 20                  # frames before the end of a track at which its motion is read: the
+                               # tracker slows every track to a stop over its last 16 frames
+START_IN = 3                   # frames into a track at which its motion is read: the first frame
+                               # at which the ball has a velocity
 
 CONTEXT_WINDOWS = (12, 37, 125)        # centred rolling means: about 1 s, 3 s, 10 s wide
 TREND_WINDOWS = (25, 75, 250)          # mean of the next w frames minus mean of the last w
@@ -197,7 +205,8 @@ def _ball_to_team(ball_xy, xy, velocity, ball_velocity):
     return out
 
 
-def _touch_features(ball_velocity, seen, nearest_home, nearest_away):
+def _touch_features(ball_velocity, seen, nearest_home, nearest_away, ball=None,
+                    halfspan=None, prefix="tch_", sequence="tq_"):
     """Features built on touches: who struck the ball, how often in a row, and when.
 
     Distance alone cannot tell a player running beside the ball from one playing it. A touch can:
@@ -210,7 +219,7 @@ def _touch_features(ball_velocity, seen, nearest_home, nearest_away):
     when both are equally near it belongs to neither and breaks no run.
     """
     t = len(seen)
-    span = TOUCH_HALFSPAN
+    span = TOUCH_HALFSPAN if halfspan is None else halfspan
     change = np.full(t, np.nan, dtype=np.float32)
     if t > 2 * span:
         delta = ball_velocity[2 * span:] - ball_velocity[:-2 * span]
@@ -281,7 +290,106 @@ def _touch_features(ball_velocity, seen, nearest_home, nearest_away):
     # Signed: +n when the last / next n touches in a row are home's, -n when away's.
     out["tch_run_last_signed"] = last_team * run_last
     out["tch_run_next_signed"] = next_team * run_next
+    if prefix != "tch_":
+        out = {prefix + key[4:]: value for key, value in out.items()}
+    if ball is not None:
+        out.update(_touch_sequence(t, frames, teams, strength, ball_velocity, ball,
+                                   home_near, away_near, span, sequence))
     return out
+
+
+def _touch_sequence(t, frames, teams, strength, ball_velocity, ball, home_near, away_near, span,
+                    prefix="tq_"):
+    """The touches either side of a frame, one by one, and what kind of touch the nearest two were.
+
+    A possession of a second or two is a touch by one team between touches of the other. The
+    features above say who touched last and next and how long ago; these add the touch before
+    that and the touch after, so that 'home, away, home within two seconds' is visible in one
+    row, and they describe the last and the next touch themselves: how hard the ball was struck,
+    how fast it came and went, whether it turned, how near the toucher and the nearest opponent
+    were, and whether it left towards the opponents' goal. A deflection and a played ball differ
+    in exactly these.
+
+    Team-signed features are +1 home, -1 away. 'fwd' and 'x' are from the toucher's side, so they
+    read the same for both teams.
+    """
+    out = {}
+    index = np.arange(t)
+    n = len(frames)
+    names_seq = []
+    for k in (1, 2, 3):
+        for side in ("p", "n"):
+            names_seq.append(prefix + "{}{}_team".format(side, k))
+            names_seq.append(prefix + "{}{}_dt".format(side, k))
+    quality = ("str", "sin", "sout", "turn", "own", "opp", "fwd", "x")
+    for side in ("p1", "n1"):
+        for name in quality:
+            names_seq.append(prefix + "{}_{}".format(side, name))
+    names_seq += [prefix + "lone_last", prefix + "lone_next"]
+    for name in names_seq:
+        out[name] = np.full(t, np.nan, dtype=np.float32)
+    if not n:
+        return out
+
+    before = np.clip(frames - span, 0, t - 1)
+    after = np.clip(frames + span, 0, t - 1)
+    v_in, v_out = ball_velocity[before], ball_velocity[after]
+    s_in = np.sqrt(np.sum(v_in * v_in, axis=1))
+    s_out = np.sqrt(np.sum(v_out * v_out, axis=1))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        turn = np.sum(v_in * v_out, axis=1) / (s_in * s_out)
+    turn[~np.isfinite(turn)] = np.nan
+    sign = teams.astype(np.float32)
+    home_d = np.where(np.isfinite(home_near[frames]), home_near[frames], np.nan)
+    away_d = np.where(np.isfinite(away_near[frames]), away_near[frames], np.nan)
+    per_touch = {
+        "str": np.minimum(strength[frames], 30.0),
+        "sin": s_in, "sout": s_out, "turn": turn,
+        "own": np.where(teams > 0, home_d, away_d),
+        "opp": np.where(teams > 0, away_d, home_d),
+        "fwd": v_out[:, 0] * sign,
+        "x": ball[frames, 0] * sign,
+    }
+
+    previous = np.searchsorted(frames, index, side="right") - 1      # last touch at or before
+    for k in (1, 2, 3):
+        pk = previous - (k - 1)
+        ok = pk >= 0
+        out[prefix + "p{}_team".format(k)][ok] = sign[pk[ok]]
+        out[prefix + "p{}_dt".format(k)][ok] = np.minimum((index[ok] - frames[pk[ok]]) / float(FPS), TIME_CAP)
+        nk = previous + k
+        ok = nk < n
+        out[prefix + "n{}_team".format(k)][ok] = sign[nk[ok]]
+        out[prefix + "n{}_dt".format(k)][ok] = np.minimum((frames[nk[ok]] - index[ok]) / float(FPS), TIME_CAP)
+    ok = previous >= 0
+    for name in quality:
+        out[prefix + "p1_" + name][ok] = per_touch[name][previous[ok]]
+    following = previous + 1
+    ok = following < n
+    for name in quality:
+        out[prefix + "n1_" + name][ok] = per_touch[name][following[ok]]
+
+    # a touch that stands alone between two touches of the other team
+    lone = np.zeros(n, dtype=np.float32)
+    if n >= 3:
+        middle = (teams[1:-1] != teams[:-2]) & (teams[1:-1] != teams[2:])
+        lone[1:-1] = np.where(middle, sign[1:-1], 0.0)
+    ok = previous >= 0
+    out[prefix + "lone_last"][ok] = lone[previous[ok]]
+    ok = following < n
+    out[prefix + "lone_next"][ok] = lone[following[ok]]
+    return out
+
+
+EXTENDED = ("tcw_", "tq_", "car_", "rb_", "tcr_", "rq_", "ed_", "b_kink", "b_dspeed4", "b_turn4")
+
+
+def is_extended(name):
+    """Whether a column is one build() leaves out with extended=False."""
+    if name.startswith(EXTENDED) or name.endswith(("_rel_speed_past12", "_rel_speed_next12")):
+        return True
+    stem, _, last = name.rpartition("_")
+    return bool(stem) and last[:3] in ("atm", "atp") and last[3:].isdigit()
 
 
 def restart_features(t, restarts):
@@ -316,8 +424,12 @@ def restart_features(t, restarts):
 
 # -- the table ---------------------------------------------------------------------------------
 
-def build(half):
-    """(names, table) for one Half. table is float32, one row per frame, NaN = not available."""
+def build(half, extended=True):
+    """(names, table) for one Half. table is float32, one row per frame, NaN = not available.
+
+    With extended=False the table holds the 255 columns the first models were trained on, and
+    those columns are the same numbers either way (`is_extended` says which a column is).
+    """
     length, width = half.pitch
     ball = half.ball_xy.astype(np.float32)
     t = half.n_frames
@@ -420,6 +532,171 @@ def build(half):
 
     # -- touches: the moments the ball's motion changes next to a player -------------------------
     f.update(_touch_features(ball_velocity, seen, home["d1"], away["d1"]))
+
+    if extended:
+        # -- touches as a smoothed path shows them --------------------------------------------
+        # The recording's tracker spreads a kick over 21 frames, so over the 8 frames the touch
+        # features above look at, a change of velocity shows two fifths of itself. The same
+        # features are built again over TOUCH_WIDE frames either side, where it shows whole,
+        # and the touch-by-touch features are built on those.
+        f.update(_touch_features(ball_velocity, seen, home["d1"], away["d1"], ball,
+                                 halfspan=TOUCH_WIDE, prefix="tcw_"))
+
+        # -- the ball carried: next to a player and moving with him ----------------------------
+        with np.errstate(invalid="ignore"):
+            away_d1 = np.where(np.isfinite(away["d1"]), away["d1"], np.inf)
+            home_d1 = np.where(np.isfinite(home["d1"]), home["d1"], np.inf)
+            carry_home = seen & (home["d1"] < CARRY_RADIUS) & (home["rel_speed"] < CARRY_SPEED) & (
+                home["d1"] + CARRY_MARGIN < away_d1)
+            carry_away = seen & (away["d1"] < CARRY_RADIUS) & (away["rel_speed"] < CARRY_SPEED) & (
+                away["d1"] + CARRY_MARGIN < home_d1)
+        for name, flag in (("h", carry_home), ("a", carry_away)):
+            series = flag.astype(np.float32)
+            f["car_since_" + name] = _seconds(_frames_since(flag)[0])
+            f["car_until_" + name] = _seconds(_frames_until(flag)[0])
+            f["car_run_" + name] = _run_length(flag) / FPS
+            for window in (12, 37):
+                f["car_{}_past{}".format(name, window)] = _rolling_mean(series, window, 0)
+                f["car_{}_next{}".format(name, window)] = _rolling_mean(series, 0, window)
+
+        # -- the same instant signals a few frames either side, not averaged -------------------
+        def shifted(values, offset):
+            out = np.full(t, np.nan, dtype=np.float32)
+            if offset > 0:
+                out[:-offset] = values[offset:]
+            else:
+                out[-offset:] = values[:offset]
+            return out
+
+        for name in ("b_ddiff", "bh_d1", "ba_d1", "b_speed"):
+            series = f[name].astype(np.float32)
+            for offset in (-12, -6, -3, 3, 6, 12):
+                f["{}_at{}{}".format(name, "p" if offset > 0 else "m", abs(offset))] = shifted(
+                    series, offset)
+
+        # -- how sharply the ball's motion is changing, as a number and not a yes or no --------
+        # The touch features above need a change of TOUCH_DELTA with one team clearly nearer.
+        # Half of the changes of possession in the open matches have no such touch within a
+        # tenth of a second, so the raw signal is given too, at three time scales.
+        def kink(halfspan):
+            out = np.full(t, np.nan, dtype=np.float32)
+            if t > 2 * halfspan:
+                delta = ball_velocity[2 * halfspan:] - ball_velocity[:-2 * halfspan]
+                out[halfspan:-halfspan] = np.minimum(np.sqrt(np.sum(delta * delta, axis=1)), 30.0)
+            return out
+
+        def rolling_max(values, before, after):
+            best = np.full(t, -np.inf, dtype=np.float32)
+            filled = np.where(np.isfinite(values), values, -np.inf).astype(np.float32)
+            for offset in range(-before, after + 1):
+                if offset == 0:
+                    best = np.maximum(best, filled)
+                elif offset > 0:
+                    best[:-offset] = np.maximum(best[:-offset], filled[offset:])
+                else:
+                    best[-offset:] = np.maximum(best[-offset:], filled[:offset])
+            best[~np.isfinite(best)] = np.nan
+            return best
+
+        for halfspan in (2, 4, 8, 12):
+            f["b_kink{}".format(halfspan)] = kink(halfspan)
+        f["b_kink8_pmax"] = rolling_max(f["b_kink8"], 12, -1)      # the 12 frames before this one
+        f["b_kink8_nmax"] = rolling_max(f["b_kink8"], -1, 12)      # the 12 frames after it
+        speed_after = shifted(ball_speed.astype(np.float32), 4)
+        speed_before = shifted(ball_speed.astype(np.float32), -4)
+        f["b_dspeed4"] = speed_after - speed_before
+        v_before = np.stack([shifted(ball_velocity[:, 0], -4), shifted(ball_velocity[:, 1], -4)], axis=1)
+        v_after = np.stack([shifted(ball_velocity[:, 0], 4), shifted(ball_velocity[:, 1], 4)], axis=1)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            turn = np.sum(v_before * v_after, axis=1) / (speed_before * speed_after)
+        f["b_turn4"] = np.where(np.isfinite(turn), turn, np.nan).astype(np.float32)
+        # the ball moving with the nearest player of each team, a little earlier and later
+        for name in ("bh_rel_speed", "ba_rel_speed"):
+            series = f[name].astype(np.float32)
+            f[name + "_past12"] = _rolling_mean(series, 12, 0)
+            f[name + "_next12"] = _rolling_mean(series, 0, 12)
+
+        # -- the ball with its corners put back ----------------------------------------------
+        # Who is at the ball when it is struck is read off a path whose corners the tracker
+        # has cut. With the corners put back the same questions are asked again: how near is
+        # each team, who controls it, who touched it.
+        rebuilt, _ = corners.rebuild(ball, ball_velocity, FPS, TOUCH_WIDE, TOUCH_DELTA)
+        home_r = _ball_to_team(rebuilt, half.home_xy, home_velocity, ball_velocity)
+        away_r = _ball_to_team(rebuilt, half.away_xy, away_velocity, ball_velocity)
+        f["rb_dh"] = home_r["d1"]
+        f["rb_da"] = away_r["d1"]
+        f["rb_dmin"] = np.fmin(home_r["d1"], away_r["d1"])
+        f["rb_ddiff"] = away_r["d1"] - home_r["d1"]
+        moved = rebuilt - ball
+        f["rb_moved"] = np.sqrt(np.sum(moved * moved, axis=1))
+        for name in ("rb_ddiff", "rb_dh", "rb_da"):
+            series = f[name].astype(np.float32)
+            for offset in (-12, -6, -3, 3, 6, 12):
+                f["{}_at{}{}".format(name, "p" if offset > 0 else "m", abs(offset))] = shifted(
+                    series, offset)
+        with np.errstate(invalid="ignore"):
+            near_home = np.where(np.isfinite(home_r["d1"]), home_r["d1"], np.inf)
+            near_away = np.where(np.isfinite(away_r["d1"]), away_r["d1"], np.inf)
+            held_home = seen & (near_home < CONTROL_RADIUS) & (near_home + CONTROL_MARGIN < near_away)
+            held_away = seen & (near_away < CONTROL_RADIUS) & (near_away + CONTROL_MARGIN < near_home)
+        for name, flag in (("h", held_home), ("a", held_away)):
+            f["rb_ctl_since_" + name] = _seconds(_frames_since(flag)[0])
+            f["rb_ctl_until_" + name] = _seconds(_frames_until(flag)[0])
+            f["rb_ctl_run_" + name] = _run_length(flag) / FPS
+        with np.errstate(invalid="ignore"):
+            f["rb_ctl_last"] = np.sign(_frames_since(held_away)[0]
+                                       - _frames_since(held_home)[0]).astype(np.float32)
+            f["rb_ctl_next"] = np.sign(_frames_until(held_away)[0]
+                                       - _frames_until(held_home)[0]).astype(np.float32)
+        corner_touches = _touch_features(ball_velocity, seen, home_r["d1"], away_r["d1"], rebuilt,
+                                         halfspan=TOUCH_WIDE, prefix="tcr_", sequence="rq_")
+        for key, value in corner_touches.items():
+            # how hard and which way the ball went is already there from the touches above
+            if key.startswith("rq_") and key.rsplit("_", 1)[-1] in ("str", "sin", "sout", "turn", "fwd"):
+                continue
+            f[key] = value
+
+    if extended:
+        # -- how a track of the ball ended, and how the next one began --------------------------
+        # A ball that was heading out of play when it was lost and one that was lost among
+        # players are different gaps, and a ball found coming in from the line is a restart. The
+        # last frames of a track cannot say which: the velocity has no value at the very end,
+        # and the tracker slows every track to a stop over its last 16 frames whatever the ball
+        # was doing. So the track is read END_BACK frames before its end and carried on from
+        # there, and START_IN frames after its beginning and carried back.
+        index = np.arange(t)
+        with np.errstate(invalid="ignore"):
+            track_start = np.where(seen, index - np.where(np.isfinite(since_hidden), since_hidden, index + 1) + 1,
+                                   next_seen).astype(np.int64)
+            track_end = np.where(seen, index + np.where(np.isfinite(until_hidden), until_hidden, t - index) - 1,
+                                 last_seen).astype(np.int64)
+        # the track a frame belongs to, or for a frame without a ball the one before it (its
+        # end) and the one after it (its start)
+        ends_at = track_end
+        starts_at = track_start
+        length_before = np.where(ends_at >= 0, _take(since_hidden, np.maximum(ends_at, 0)), 0.0)
+        length_after = np.where(starts_at >= 0, _take(until_hidden, np.maximum(starts_at, 0)), 0.0)
+        read_end = np.where((ends_at >= 0) & (np.nan_to_num(length_before, nan=0.0, posinf=1e9) > END_BACK + BALL_VEL_HALFSPAN),
+                            ends_at - END_BACK, -1)
+        read_start = np.where((starts_at >= 0) & (starts_at + START_IN < t)
+                              & (np.nan_to_num(length_after, nan=0.0, posinf=1e9) > START_IN + BALL_VEL_HALFSPAN),
+                              starts_at + START_IN, -1)
+
+        def carried(read, seconds):
+            """The ball's place at `read`, carried on for `seconds` at the velocity it has there."""
+            x = _take(ball[:, 0], read) + _take(ball_velocity[:, 0], read) * np.float32(seconds)
+            y = _take(ball[:, 1], read) + _take(ball_velocity[:, 1], read) * np.float32(seconds)
+            return np.minimum(length / 2 - np.abs(x), width / 2 - np.abs(y)).astype(np.float32)
+
+        f["ed_lost_speed"] = _take(ball_speed, read_end)
+        f["ed_lost_vx"] = _take(ball_velocity[:, 0], read_end)
+        f["ed_lost_outward"] = _take(f["b_outward"], read_end)
+        f["ed_lost_ahead"] = carried(read_end, END_BACK / float(FPS))            # where it would be at the end
+        f["ed_lost_ahead2"] = carried(read_end, (END_BACK + 25) / float(FPS))    # and a second later
+        f["ed_found_speed"] = _take(ball_speed, read_start)
+        f["ed_found_vx"] = _take(ball_velocity[:, 0], read_start)
+        f["ed_found_outward"] = _take(f["b_outward"], read_start)
+        f["ed_found_back"] = carried(read_start, -(START_IN + 12) / float(FPS))  # where it came from
 
     # -- a ball at rest ------------------------------------------------------------------------
     with np.errstate(invalid="ignore"):

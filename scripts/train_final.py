@@ -20,6 +20,7 @@ import numpy as np
 
 from vantage import __version__, external, model, smoothing
 from vantage import decode as decoding
+from vantage.features import is_extended
 from vantage.labels import CONTROL_SECONDS
 
 ROOT = external.ROOT
@@ -57,6 +58,9 @@ def main():
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--state-params", default="{}",
                         help="JSON of LightGBM settings that replace the frame classifier's own")
+    parser.add_argument("--features", choices=("all", "first"), default="all",
+                        help="first: the 255 columns the first models were trained on, without "
+                             "the ones added later (vantage.features.is_extended)")
     parser.add_argument("--decode", default="{}", help="JSON of DecodeConfig fields")
     parser.add_argument("--card-only", action="store_true",
                         help="rewrite the decoding settings of an existing model card, no training")
@@ -75,6 +79,11 @@ def main():
 
     training = external.load_training(args.data_tag, external.ALL_MATCHES, args.variants)
     names, table, target = training["names"], training["table"], training["target"]
+    if args.features == "first":
+        keep = [index for index, name in enumerate(names) if not is_extended(name)]
+        if len(keep) < len(names):
+            names = [names[index] for index in keep]
+            table = training["table"] = np.ascontiguousarray(table[:, keep])
     print("training on {} rows x {} features from {} matches".format(
         len(table), len(names), len(external.ALL_MATCHES)), flush=True)
 
@@ -98,8 +107,12 @@ def main():
         "decode": decode,
         # the simulated recordings these models learned from are smoothed as the reference is,
         # so a recording that is sharper has to be brought to it before they read it
-        "smoothing": ({"reference": smoothing.REFERENCE, "target": smoothing.TARGET,
-                       "windows": list(smoothing.WINDOWS), "hold": smoothing.HOLD}
+        "smoothing": (dict({"reference": smoothing.REFERENCE, "target": smoothing.TARGET,
+                            "windows": list(smoothing.WINDOWS), "hold": smoothing.HOLD},
+                           # from the fifth generation on the simulated recordings have no gap
+                           # that the reference tracker bridges, so other recordings must not
+                           **({"bridge": list(smoothing.BRIDGE)}
+                              if training["generation"] not in ("g2", "g3", "g4") else {}))
                       if training["generation"] != "g1" else None),
         "training": {
             "matches": list(external.ALL_MATCHES),

@@ -7,7 +7,7 @@ import pytest
 
 from vantage import A, D, H, X, anymatch, competition, epts, evaluate, tagging, viewer_export
 from vantage import decode as decoding
-from vantage.features import build
+from vantage.features import build, is_extended
 from vantage.half import Half
 from vantage.labels import harmonise, segments, spell_stats
 
@@ -245,6 +245,62 @@ def test_features_are_mirror_images_under_a_team_swap():
     for signed in ("tch_last", "tch_run_next_signed"):
         assert np.allclose(table[:, names.index(signed)], -swapped[:, names.index(signed)],
                            equal_nan=True, atol=1e-4), signed
+
+
+def passing_toy(seed=0, frames=1500):
+    """Six players a side who hardly move, and a ball passed from one to another: a second in
+    flight, most of a second at the receiver's feet. Twice the ball has no position."""
+    rng = np.random.default_rng(seed)
+    spots_home = rng.uniform([-40.0, -25.0], [20.0, 25.0], size=(6, 2))
+    spots_away = rng.uniform([-20.0, -25.0], [40.0, 25.0], size=(6, 2))
+    wobble = np.cumsum(rng.normal(0.0, 0.02, size=(frames, 12, 2)), axis=0)
+    home = (spots_home[None] + wobble[:, :6]).astype(np.float32)
+    away = (spots_away[None] + wobble[:, 6:]).astype(np.float32)
+    ball = np.zeros((frames, 2), dtype=np.float64)
+    labels = np.zeros(frames, dtype=np.int8)
+    at = spots_home[0]
+    frame = 0
+    while frame < frames:
+        team = int(rng.integers(0, 2))
+        target = (home if team == 0 else away)[min(frame + 25, frames - 1), int(rng.integers(0, 6))].astype(np.float64)
+        flight = min(25, frames - frame)
+        ball[frame:frame + flight] = at + (target - at) * (np.arange(1, flight + 1) / 25.0)[:, None]
+        labels[frame:frame + flight] = team
+        frame += flight
+        rest = min(int(rng.integers(12, 30)), frames - frame)
+        ball[frame:frame + rest] = target
+        labels[frame:frame + rest] = team
+        frame += rest
+        at = target
+    ball = ball.astype(np.float32)
+    ball[400:520] = np.nan
+    ball[900:1010] = np.nan
+    return Half(match="toy", period=1, pitch=(105.0, 68.0), ball_xy=ball, home_xy=home, away_xy=away,
+                labels=labels).check()
+
+
+def test_every_column_has_its_mirror_image_under_a_team_swap():
+    """Each half is scored as it is and with the teams exchanged, and the two answers are
+    averaged. That only cancels a lean towards 'home' if no column means something else from the
+    other side: every column of one view is a column of the other, or its negative."""
+    half = passing_toy()
+    names, table = build(half)
+    _, swapped = build(half.swapped())
+    assert len(names) == 433
+    for index, name in enumerate(names):
+        column = table[:, index]
+        assert np.isfinite(column).any(), name
+        assert any(np.allclose(column, sign * swapped[:, other], equal_nan=True, atol=1e-3)
+                   for other in range(len(names)) for sign in (1.0, -1.0)), name
+
+
+def test_the_first_table_is_the_extended_one_without_the_added_columns():
+    half = passing_toy(1)
+    names, table = build(half)
+    first_names, first = build(half, extended=False)
+    assert len(first_names) == 255 and len(names) == 433
+    assert first_names == [name for name in names if not is_extended(name)]
+    assert np.array_equal(first, table[:, [names.index(name) for name in first_names]], equal_nan=True)
 
 
 def test_tagged_restarts_read_the_same_from_either_side():

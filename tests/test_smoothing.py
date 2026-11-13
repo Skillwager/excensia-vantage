@@ -1,5 +1,7 @@
 """The smoothness measure and the simulator's smoothing, on generated data only."""
 
+from dataclasses import replace
+
 import numpy as np
 
 from vantage import smoothing
@@ -156,3 +158,26 @@ def test_the_simulator_smooths_the_ball_and_the_players_when_asked_and_draws_the
     # the same frames are seen and the same players are there: only the paths differ
     assert np.array_equal(np.isfinite(sharp.ball_xy[:, 0]), np.isfinite(smooth.ball_xy[:, 0]))
     assert sharp.home_xy.shape == smooth.home_xy.shape
+
+
+def test_a_gap_the_reference_tracker_would_bridge_is_bridged_when_the_card_asks():
+    t = 1500
+    ball = np.zeros((t, 2), dtype=np.float32)
+    ball[:, 0] = np.arange(t) * 0.1                                  # a steady 2.5 m/s
+    ball[200:210] = np.nan                                           # a blip: stays
+    ball[500:550] = np.nan                                           # two seconds: bridged
+    ball[900:1100] = np.nan                                          # eight seconds: stays
+    players = np.zeros((t, 2, 2), dtype=np.float32)
+    half = Half(match="toy", period=1, pitch=(105.0, 68.0), ball_xy=ball, home_xy=players, away_xy=players + 5.0)
+    card = {"smoothing": {"reference": smoothing.REFERENCE, "target": smoothing.TARGET,
+                          "windows": list(smoothing.WINDOWS), "hold": smoothing.HOLD,
+                          "bridge": list(smoothing.BRIDGE)}}
+    out, _ = smoothing.for_model(half, card)
+    seen = np.isfinite(out.ball_xy[:, 0])
+    assert seen[500:550].all() and not seen[200:210].any() and not seen[900:1100].any()
+    assert np.allclose(out.ball_xy[500:550, 0], np.arange(500, 550) * 0.1, atol=1e-3)
+    assert out.meta["bridged"] == 1
+    plain, _ = smoothing.for_model(half, {"smoothing": dict(card["smoothing"], bridge=None)})
+    assert not np.isfinite(plain.ball_xy[500:550, 0]).any()
+    whole = replace(half, ball_xy=np.where(np.isnan(ball), np.float32(1.0), ball))
+    assert smoothing.bridged(whole) is whole                         # nothing to bridge: untouched

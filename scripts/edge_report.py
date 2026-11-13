@@ -143,8 +143,10 @@ def main():
     reference = None
     if args.data_dir:
         reference = report("the recording", competition.load_halves(args.data_dir))
-    names = {"g3": "simulated", "g2": "simulated, second generation", "g1": "simulated, as first built"}
-    for generation in ("g3", "g2", "g1") if args.earlier else ("g3",):
+    names = {"g7": "simulated", "g5": "simulated, fifth generation", "g4": "simulated, fourth generation",
+             "g3": "simulated, third generation", "g2": "simulated, second generation",
+             "g1": "simulated, as first built"}
+    for generation in ("g7", "g3", "g2", "g1") if args.earlier else ("g7",):
         for source, said in (("dfl", "the seven DFL matches"), ("metrica", "Metrica's three sample games")):
             for condition in ("typical", "random1"):
                 report("{}, {}, {} setting".format(names[generation], said, condition),

@@ -96,7 +96,8 @@ def grid_scores(halves, grid):
 def prepare(args):
     for match in (args.matches or ALL_MATCHES):
         started = time.time()
-        external.prepare_match(match, args.data_tag, args.variants, args.stride)
+        external.prepare_match(match, args.data_tag, args.variants, args.stride,
+                               extended=not args.first_features)
         print("{} prepared in {:.0f}s".format(match, time.time() - started), flush=True)
 
 
@@ -315,6 +316,8 @@ def main():
     p.add_argument("--variants", type=int, default=6)
     p.add_argument("--stride", type=int, default=6)
     p.add_argument("--matches", nargs="*", default=None)
+    p.add_argument("--first-features", action="store_true",
+                   help="tables with the first 255 columns only, as the first models' tables had")
     p = sub.add_parser("fold")
     p.add_argument("--data-tag", default="v10")
     p.add_argument("--variants", type=int, default=6)

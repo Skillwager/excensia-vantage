@@ -33,7 +33,6 @@ import os
 import numpy as np
 
 from vantage import FPS, competition, external, smoothing
-from vantage.degrade import DegradeConfig, sample_config
 from vantage.features import (BALL_MAX_SPEED, BALL_VEL_HALFSPAN, PLAYER_MAX_SPEED,
                               PLAYER_VEL_HALFSPAN, _central_velocity, build)
 
@@ -149,7 +148,7 @@ def main():
     if args.data_dir:
         columns.append(("the recording", describe(competition.load_halves(args.data_dir))))
     before = os.environ.get("VANTAGE_SIM")
-    generations = ["g2"] + (["g1"] if args.first_generation else [])
+    generations = ["g7"] + (["g1"] if args.first_generation else [])
     published = []
     for generation in generations:
         os.environ["VANTAGE_SIM"] = generation
@@ -157,11 +156,11 @@ def main():
         for match in args.matches:
             for half in external.labelled_halves(match):
                 rng = np.random.default_rng(external.seed_for("report", match, half.period))
-                typical.append(external.observed(half, rng, DegradeConfig()))
-                drawn.append(external.observed(half, rng, sample_config(rng)))
+                typical.append(external.observed(half, rng, external.conditions()["typical"]))
+                drawn.append(external.observed(half, rng, external.sampled(rng)))
                 if generation == generations[0]:
                     published.append(external.observed(half, rng, None))
-        label = "simulated" if generation == "g2" else "simulated, as first built"
+        label = "simulated" if generation == "g7" else "simulated, as first built"
         columns.append((label + ", typical setting", describe(typical)))
         columns.append((label + ", settings drawn at random", describe(drawn)))
     if before is None:

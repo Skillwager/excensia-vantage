@@ -41,6 +41,9 @@ def main():
     parser.add_argument("--decode", default=None, help="JSON of decoding settings, else the card's")
     args = parser.parse_args()
     state_model, boundary_model, card = load_model(args.model)
+    # no SkillCorner match has set-piece tags: they are imitated, and the way they are imitated
+    # belongs to the simulator the models were trained with (vantage/external.py)
+    os.environ["VANTAGE_SIM"] = str(card.get("training", {}).get("generation") or "g1")
     names = card["features"]
     config = decoding.DecodeConfig(**(json.loads(args.decode) if args.decode else card["decode"]))
     out_dir = os.path.join(ROOT, "runs", "cv", args.tag)

@@ -125,7 +125,7 @@ def main():
     print("lines taken {} frames either side of a touch".format(args.reach))
     if args.data_dir:
         report("the recording", measure(competition.load_halves(args.data_dir), reach=args.reach))
-    halves, truth = simulated("g2")
+    halves, truth = simulated("g7")
     report("simulated recordings of the open matches", measure(halves, truth, args.reach))
     halves, truth = simulated("g1")
     report("the same with the simulator as first built", measure(halves, truth, args.reach))

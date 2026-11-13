@@ -176,7 +176,7 @@ def with_loose_ball(half, rng, sigma=0.75):
                 ball_z=half.ball_z, first_frame=half.first_frame, meta=dict(half.meta))
 
 
-def with_dead_ball_track(half, rng):
+def with_dead_ball_track(half, rng, friction=False):
     """Give the ball a plausible position while play is stopped.
 
     The sample tracking has no ball at all during stoppages, which automatic tracking does not
@@ -187,6 +187,11 @@ def with_dead_ball_track(half, rng):
     from, and sits there until play resumes. Stoppages under three seconds are joined by a
     straight line. The noise simulator then hides and jitters this track like any other; it
     decides whether the tracker sees any of it.
+
+    With `friction` the ball rolls on as a free ball does in live play: it loses speed at a
+    steady rate, drawn for each stoppage (0.4 to 1.5 m/s a second, more if it has to be at rest
+    by the time it is fetched). Without it the speed falls off by 1/e a second from the first
+    dead frame on, the same law at every stoppage, which a model can learn as the stoppage.
     """
     ball = half.ball_xy.astype(np.float32).copy()
     labels = half.labels
@@ -211,7 +216,15 @@ def with_dead_ball_track(half, rng):
                 if start > 2 and np.isfinite(ball[start - 3, 0]):
                     velocity = (ball[start - 1] - ball[start - 3]) * (FPS / 2.0)
                 seconds = np.arange(1, roll + 1) / float(FPS)
-                ball[start:start + roll] = before + velocity * (1.0 - np.exp(-seconds))[:, None]
+                if friction:
+                    speed = float(np.sqrt(np.sum(velocity * velocity)))
+                    slow = max(float(rng.uniform(0.4, 1.5)), speed / (roll / float(FPS)))
+                    moving = np.minimum(seconds, speed / slow)
+                    along = speed * moving - 0.5 * slow * moving * moving
+                    heading = velocity / speed if speed > 0.05 else np.zeros(2, dtype=np.float32)
+                    ball[start:start + roll] = before + heading * along[:, None].astype(np.float32)
+                else:
+                    ball[start:start + roll] = before + velocity * (1.0 - np.exp(-seconds))[:, None]
         roll = roll if before is not None else 0
         rest = 0
         if after is not None:

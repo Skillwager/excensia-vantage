@@ -36,6 +36,9 @@ ENOUGH = 40             # strong changes needed before a path is judged at all
 HOLD = 5                # frames the reference tracker still reports a lost ball or player where it
                         # last saw it (scripts/edge_report.py)
 PROFILE_REACH = 20      # frames either side of a strong change's middle that `profile` covers
+BRIDGE = (16, 128)      # frames: the reference tracker reports no gap in the ball's track of these
+                        # lengths (its shortest is 129 frames, apart from blips of up to 15): a
+                        # ball it loses for less it bridges (scripts/track_report.py)
 
 
 def moving_average(xy, window):
@@ -56,7 +59,7 @@ def moving_average(xy, window):
     return out.astype(np.float32)
 
 
-def track_average(xy, window, hold=0):
+def track_average(xy, window, hold=0, end="hold"):
     """Centred moving average inside each unbroken track, the way the reference tracker treats
     the two ends of a track (read off its recording without labels, scripts/edge_report.py).
 
@@ -66,6 +69,11 @@ def track_average(xy, window, hold=0):
     for everything after, so every track slows to a stop over its last frames. Nothing outside
     the track is used. The held frames are part of the track that is returned; a track that is
     followed within `hold` frames by the next one is held only up to it.
+
+    With end="carry" the end of a track is treated as its beginning is: carried on by reflecting
+    it through its last point. That is for an average that stands for the ball, not the tracker
+    (a real kick is not as sudden as the open matches draw it), taken inside a track so that
+    nothing of the frames the tracker did not have is in it.
     """
     out = np.full(xy.shape, np.nan, dtype=np.float32)
     there = np.isfinite(xy[:, 0])
@@ -83,7 +91,10 @@ def track_average(xy, window, hold=0):
             continue
         reach = min(window // 2, n - 1)
         head = 2.0 * part[0] - part[reach:0:-1]                       # reflected through the first point
-        tail = np.repeat(part[-1:], reach, axis=0)                    # the last place, held
+        if end == "hold":
+            tail = np.repeat(part[-1:], reach, axis=0)                # the last place, held
+        else:
+            tail = 2.0 * part[-1] - part[-2:-reach - 2:-1]            # carried on, as at the start
         longer = np.concatenate((head, part, tail))
         total = np.concatenate((np.zeros((1, xy.shape[1])), np.cumsum(longer, axis=0)))
         out[start:until] = ((total[2 * reach + 1:] - total[:-2 * reach - 1]) / (2 * reach + 1)).astype(np.float32)
@@ -231,8 +242,37 @@ def for_model(half, card):
     if not wanted:
         return half, 1
     # the card's own numbers: the models and the step that feeds them cannot drift apart
+    if wanted.get("bridge"):
+        half = bridged(half, int(wanted["bridge"][0]), int(wanted["bridge"][1]))
     return to_reference(half, wanted.get("reference", REFERENCE), wanted.get("target", TARGET),
                         tuple(wanted.get("windows", WINDOWS)), wanted.get("hold", HOLD))
+
+
+def bridged(half, least=BRIDGE[0], most=BRIDGE[1]):
+    """The half with every gap in the ball's track of `least` to `most` frames filled in.
+
+    Models trained on the reference tracker's recordings have never seen a gap of these
+    lengths: that tracker bridges them. How it bridges is not known; here the ball is carried
+    in a straight line at a steady speed from where it was lost to where it is found, which is
+    the least that can be assumed. A recording without such a gap, the reference recording
+    itself among them, comes back as it is.
+    """
+    ball = half.ball_xy
+    seen = np.isfinite(ball[:, 0])
+    edges = np.diff(np.concatenate(([0], seen.astype(np.int8), [0])))
+    starts, stops = np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)
+    out, count = None, 0
+    for a, b in zip(stops[:-1].tolist(), starts[1:].tolist()):        # [a, b): no ball
+        if not least <= b - a <= most:
+            continue
+        if out is None:
+            out = ball.astype(np.float32).copy()
+        weight = (np.arange(1, b - a + 1, dtype=np.float32) / np.float32(b - a + 1))[:, None]
+        out[a:b] = ball[a - 1] + (ball[b] - ball[a - 1]) * weight
+        count += 1
+    if out is None:
+        return half
+    return replace(half, ball_xy=out, meta=dict(half.meta, bridged=count))
 
 
 def to_reference(half, reference=REFERENCE, target=TARGET, windows=WINDOWS, hold=HOLD):
