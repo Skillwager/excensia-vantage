@@ -19,3 +19,19 @@ viewer/shots/
 
 # The files that go into the submission form. Built locally, not kept in the repository.
 submission/
+
+# What the run and export commands write, wherever they are asked to write it: a file of
+# labels, its receipt, a run file or a viewer page of the competition match. None of them
+# belongs in a public repository.
+*.csv
+*.receipt.json
+*.run.json
+/run.json
+/*.html
+*.npz
+*.mkv
+*.webm
+*.avi
+*.m4v
+*.MP4
+*.MOV

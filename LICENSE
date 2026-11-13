@@ -23,4 +23,6 @@ SOFTWARE.
 This licence covers the code in this repository. It does not cover the
 competition's match data, which is not in this repository, nor the external
 datasets, which keep their own terms (see README.md, "Data and licences").
-vantage/_official_metrics.py is Copyright (c) 2026-2027 Metrica Sports, MIT.
+vantage/_official_metrics.py is the organisers' metric code, Copyright (c) 2026-2027
+Metrica Sports, used unchanged under the MIT License: the permission notice above is that
+licence's own text and applies to that file with their copyright line.
