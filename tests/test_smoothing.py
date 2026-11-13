@@ -48,6 +48,17 @@ def test_a_sharp_path_is_brought_to_the_reference_and_a_smooth_one_is_left_alone
     assert window == 1 and same is smooth
 
 
+def test_the_profile_of_a_kick_is_narrow_on_a_sharp_path_and_wide_on_a_smoothed_one():
+    ball = kicked_ball(frames=12000, every=120)
+    middle = smoothing.PROFILE_REACH
+    total, count = smoothing.profile(ball)
+    assert count > 20 and (total / count)[middle - 2:middle + 3].sum() > 0.9
+    total, count = smoothing.profile(smoothing.moving_average(ball, 21))
+    smooth = total / count
+    assert count > 20 and smooth.max() < 0.06               # one frame in twenty-one, about
+    assert 0.9 < smooth[middle - 12:middle + 13].sum() < 1.01
+
+
 def test_a_path_with_too_few_kicks_to_judge_is_left_alone():
     ball = kicked_ball(frames=600)
     assert smoothing.spread(ball)[0] < smoothing.ENOUGH

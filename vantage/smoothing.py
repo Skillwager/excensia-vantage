@@ -31,6 +31,7 @@ TARGET = 0.435          # a sharper path is smoothed until its share is at or be
                         # reference recording's own value
 WINDOWS = (5, 9, 13, 17, 19, 21, 23, 25)   # moving averages tried, in frames, smallest first
 ENOUGH = 40             # strong changes needed before a path is judged at all
+PROFILE_REACH = 20      # frames either side of a strong change's middle that `profile` covers
 
 
 def moving_average(xy, window):
@@ -60,21 +61,26 @@ def _change(velocity, halfspan):
     return out
 
 
-def spread(ball_xy):
-    """(strong changes found, median share of each that shows over SHORT frames either side).
-
-    The share is NaN when no strong change was found.
-    """
-    ball = np.asarray(ball_xy, dtype=np.float32)
-    t = len(ball)
-    velocity = _central_velocity(ball, BALL_VEL_HALFSPAN, BALL_MAX_SPEED).astype(np.float64)
+def _strong_changes(velocity):
+    """(frames, strength): the frames where the change of velocity over LONG frames either side
+    peaks at STRONG or more, and that change at every frame (0 where it cannot be read)."""
     whole = _change(velocity, LONG)
     strength = np.where(np.isfinite(whole), whole, 0.0)
     peak = strength >= STRONG
     for offset in range(1, LONG + 1):
         peak[offset:] &= strength[offset:] >= strength[:-offset]
         peak[:-offset] &= strength[:-offset] > strength[offset:]
-    frames = np.flatnonzero(peak)
+    return np.flatnonzero(peak), strength
+
+
+def spread(ball_xy):
+    """(strong changes found, median share of each that shows over SHORT frames either side).
+
+    The share is NaN when no strong change was found.
+    """
+    ball = np.asarray(ball_xy, dtype=np.float32)
+    velocity = _central_velocity(ball, BALL_VEL_HALFSPAN, BALL_MAX_SPEED).astype(np.float64)
+    frames, strength = _strong_changes(velocity)
     if not len(frames):
         return 0, float("nan")
     part = _change(velocity, SHORT)
@@ -88,6 +94,46 @@ def spread(ball_xy):
     if not len(share):
         return int(len(frames)), float("nan")
     return int(len(frames)), float(np.median(share))
+
+
+def profile(ball_xy):
+    """(total, count): how the strong changes of a path's velocity are spread over the frames
+    around them. total / count is the average: the share of a change that falls in each of the
+    PROFILE_REACH frames before its middle, the middle frame, and as many after.
+
+    The whole change is the one `spread` reads: from the velocity LONG frames before the peak to
+    the velocity LONG frames after it. Each frame's own change of velocity is projected on its
+    direction and divided by its size, which makes it a share of the change; between those two
+    frames the shares add up to one. The middle of a change is the first frame by which half of
+    it has happened. The shares are lined up on that frame and added up over all strong
+    changes. A change with a gap in the path nearby is left out.
+    """
+    ball = np.asarray(ball_xy, dtype=np.float32)
+    velocity = _central_velocity(ball, BALL_VEL_HALFSPAN, BALL_MAX_SPEED).astype(np.float64)
+    frames, _ = _strong_changes(velocity)
+    step = np.full(velocity.shape, np.nan)
+    step[1:] = velocity[1:] - velocity[:-1]
+    total = np.zeros(2 * PROFILE_REACH + 1)
+    count = 0
+    for frame in frames:
+        if frame - LONG < 0 or frame + LONG >= len(ball):
+            continue
+        whole = velocity[frame + LONG] - velocity[frame - LONG]
+        size = np.sqrt(np.sum(whole * whole))
+        towards = whole / (size * size)
+        inner = step[frame - LONG + 1:frame + LONG + 1] @ towards
+        if not np.isfinite(inner).all():
+            continue
+        middle = frame - LONG + 1 + int(np.argmax(np.cumsum(inner) >= 0.5))
+        low, high = middle - PROFILE_REACH, middle + PROFILE_REACH + 1
+        if low < 1 or high > len(ball):
+            continue
+        share = step[low:high] @ towards
+        if not np.isfinite(share).all():
+            continue
+        total += share
+        count += 1
+    return total, count
 
 
 def for_model(half, card):
