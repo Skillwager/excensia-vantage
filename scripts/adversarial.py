@@ -56,7 +56,7 @@ def main():
     parser.add_argument("--data-dir", default=None)
     parser.add_argument("--pseudo", default=None,
                         help="use this external match in place of the recording (a baseline)")
-    parser.add_argument("--data-tag", default="v10")
+    parser.add_argument("--data-tag", default="g7")
     parser.add_argument("--rows", type=int, default=60000)
     parser.add_argument("--top", type=int, default=30)
     parser.add_argument("--drop", nargs="*", default=[], help="features to leave out")

@@ -7,11 +7,14 @@ are respected here: a tag never sets a label. It is used in two ways.
 Set pieces are restarts
 -----------------------
 Every corner, throw-in, goal kick and free kick tag is a clip exactly 35 seconds long, and every
-kick-off tag exactly 5. A clip does not say when the ball was put back in play, but it is cut a
-fixed time before that moment (see `RESTART_LEAD`). So each set-piece tag gives a restart: the
-frame play resumed after a stoppage, and for corners, goal kicks and free kicks the team that
-took it. `restarts` returns them, and the model reads them as features (vantage/features.py).
-It learned what they are worth on other matches, where such tags were imitated from the labels
+kick-off tag exactly 5. A clip does not say when the ball was put back in play. At the two
+start-of-half kick-offs it begins about 3.5 seconds before that moment (see `RESTART_LEAD`), so
+each set-piece tag is read as a restart 3.5 seconds into its clip, and for corners, goal kicks
+and free kicks as the team that took it. At a throw-in or a corner the restart itself comes two
+to three seconds after that moment (scripts/track_report.py, scripts/set_piece_profile.py).
+`restarts` returns the moments read off the tags, and the model reads them as features
+(vantage/features.py). It learned what they are worth, and how early they run, on other
+matches, where such tags were imitated from the labels with the same habit
 (vantage/external.py).
 
 Phases vote for a team
@@ -86,15 +89,20 @@ def team_code(name, home_name, away_name):
     return H if scores[0] > scores[1] else A
 
 
-# Seconds from the start of a set-piece clip to the restart it shows. The clips are cut a fixed
-# time before the restart: the two start-of-half kick-off tags begin 3.52 and 3.28 seconds before
-# the kick-off frames the organisers publish, and a label-free profile of the tracking around the
-# other set pieces (scripts/set_piece_profile.py) has its step at the same place.
+# Seconds from the start of a set-piece clip to the moment the features count from. The two
+# start-of-half kick-off tags begin 3.52 and 3.28 seconds before the kick-off frames the
+# organisers publish. The same lead is used for the other set pieces, and there it is early: a
+# label-free profile of the tracking around them (scripts/set_piece_profile.py) has the players'
+# pace lowest about there, but the ball's track returns six to seven seconds into a throw-in or
+# corner clip, as the restart is taken (scripts/track_report.py). The models were trained on
+# tags imitated with that habit, so this is a fixed convention and not the time of the restart.
 RESTART_LEAD = 3.5
 
 
 def restarts(instances, home_name, away_name, fps=FPS):
-    """[(video frame, team)]: when each tagged set piece put the ball back in play, and for whom.
+    """[(video frame, team)]: the moment read off each set-piece tag, `RESTART_LEAD` into its
+    clip, and for whom. At a kick-off that is the restart; at a throw-in or a corner the restart
+    comes two to three seconds later.
 
     The team is H, A or None. Corners, goal kicks and free kicks carry a team; throw-ins and
     kick-offs do not. These go to the model as features (vantage/features.py), which is how it

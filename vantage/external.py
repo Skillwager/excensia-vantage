@@ -177,6 +177,15 @@ CONDITIONS_G6 = {name: (replace(setting, **SIXTH_ONLY) if isinstance(setting, De
 SEVENTH = dict(FIFTH, **SEVENTH_ONLY)
 CONDITIONS_G7 = {name: (replace(setting, **SEVENTH_ONLY) if isinstance(setting, DegradeConfig) else setting)
                  for name, setting in CONDITIONS_G5.items()}
+# A seventh scoring condition, added on 13 November after the six had been scored and the
+# models chosen; it chooses nothing, and a fold does not score it unless it is asked for
+# (`cv_variants.py --conditions mixed`). The independent reader of that choice pointed out that
+# no condition has both a ball that is rarely lost in live play and stoppages that are mostly
+# not followed, which is what the submitted file's own totals say of the provided recording.
+# This one is the harsh condition with the easy condition's settings for losing the ball in
+# live play; no value in it is new.
+CONDITIONS_G7["mixed"] = replace(CONDITIONS_G7["harsh"], live_loss_rate=0.5, live_loss_median=7.0,
+                                 until_restart=0.1, find_at_kick=0.9, lose_at_player=0.85)
 
 
 def conditions():

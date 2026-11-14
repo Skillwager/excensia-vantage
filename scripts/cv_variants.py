@@ -26,17 +26,19 @@ short_seconds, metrica_weight, change_weight; for the boundary model width, metr
 
 "state" / "boundary" may also be "model:<tag>": the models fitted for that variant of this run,
 asked again about this variant's own input. With "norm": true the held-out recordings are first
-brought to the reference smoothness (vantage/smoothing.py), as the run command does.
+brought to the reference smoothness (vantage/smoothing.py), as the run command does. With
+"norm": "bridge" the gaps the reference tracker never reports are filled in before that, which
+is what the run command does for models trained on the fifth generation or a later one.
 
 Fitted models are kept in runs/cv/_models/ under a name made from their settings, their tables
 and their training matches, and read back from there unless a training table is newer, so a run
 that is started again does not fit them twice. A summary records which code made it, and a fold
 whose summary was made by other code is not skipped: the variant has to be given a new tag.
 
---gens lists the simulator generations the held-out matches are recorded with (g4: paths, track
-ends and the losing and finding of the ball as in the provided recording; g1 to g3: the earlier
-generations, see vantage/external.py). A variant scored under another generation than g2 is
-written to <tag>_<generation>. The tables say which generation and which code made them; tables
+--gens lists the simulator generations the held-out matches are recorded with (g7, the default:
+the simulator of section 2 of the technical document; g1 to g6: the earlier generations, see
+vantage/external.py). A variant scored under another generation than g2 is written to
+<tag>_<generation>. The tables say which generation and which code made them; tables
 of one tag made by different code are refused, and so is a fold whose summary was made from
 other code, other tables or another variant under the same tag.
 
@@ -296,9 +298,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--spec", required=True)
     parser.add_argument("--test", nargs="+", required=True)
-    parser.add_argument("--data-tag", default="g2")
+    parser.add_argument("--data-tag", default="g7")
     parser.add_argument("--variants", type=int, default=6)
-    parser.add_argument("--gens", nargs="+", default=["g2"])
+    parser.add_argument("--gens", nargs="+", default=["g7"])
     parser.add_argument("--conditions", nargs="*", default=None,
                         help="score these recording conditions only (a quick trial)")
     parser.add_argument("--work", default=os.path.join(ROOT, "runs", "cv_tmp"))
@@ -487,6 +489,8 @@ def main():
                         out = []
                         for half in halves:
                             if norm:
+                                if norm == "bridge":
+                                    half = smoothing.bridged(half)
                                 half, window = smoothing.to_reference(half)
                                 windows.setdefault((gen, condition), []).append(window)
                             own_names, own = build(half)
@@ -522,7 +526,9 @@ def main():
                                 parts.append(saved(out_tag(source, gen), match,
                                                    condition)[0 if which == "state" else 1])
                         else:
-                            norm = bool(variant.get("norm"))
+                            norm = variant.get("norm") or False
+                            if norm not in (False, True, "bridge"):
+                                raise SystemExit('"norm" is true or "bridge", not {!r}'.format(norm))
                             key = (which, id(entry[0]), norm)
                             if key not in cache:
                                 cache[key] = predict(entry, which, norm)
