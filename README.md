@@ -42,8 +42,8 @@ python -m venv .venv
 .venv/bin/python -m vantage run --data-dir /path/to/data --out Excensia.csv
 ```
 
-Run the last line from this folder. Python 3.12 (`.python-version` has the one used on Windows; the Ubuntu runs used that
-system's own 3.12.3). The
+Run the last line from this folder. Python 3.12 (the file came out the same under 3.12.13 and 3.12.10 on Windows and under 3.12.3
+on Ubuntu; `.python-version` names the first). The
 pinned packages in `requirements.txt` are the whole runtime: numpy, scipy, lightgbm and
 narwhals (LightGBM requires the other three). On Linux, LightGBM also needs the OpenMP runtime, which a minimal
 image may lack (`apt-get install libgomp1`); on Debian and Ubuntu the interpreter is called

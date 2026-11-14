@@ -928,19 +928,15 @@ The command prints the SHA-256 of the file it writes and saves a receipt next to
 hashes of the inputs.
 
 The same file, byte for byte, was produced from fresh clones of the repository on Windows 11
-(Python 3.12.13) and on Ubuntu 24.04 (Python 3.12.3). On Ubuntu the clone got a
-newly made environment, and `pip install -r requirements.txt` downloaded the pinned packages
-into it. That machine has neither `python3-venv` nor `libgomp1` installed, so none of the
-three commands was run there exactly as printed: the environment was made without pip, the
-packages were installed with a pip supplied by hand, and the run was started with LightGBM
-pointed at an unpacked copy of `libgomp1`. The packages were downloaded at an earlier
-commit; the final commit was run in that environment from a fresh clone. On Windows the
-fresh clone was run
-with the pinned packages already installed. The three commands were run there in a newly made
-environment once, on 13 November, with `.venv\Scripts` for `.venv/bin` and pip called as
-`python -m pip`. That was at a commit that still held the earlier models, and the run wrote
-the earlier file. The final commit was run in the same environment, which by then held the
-development packages as well, and wrote the submitted file. The feature code uses
+(Python 3.12.13) and on Ubuntu 24.04 (Python 3.12.3). Each system also got a new
+clone with a newly made environment, into which `pip install -r requirements.txt` put the
+pinned packages and nothing else. On Windows the three commands were run in it exactly as
+printed, with `.venv\Scripts` for `.venv/bin` (Python 3.12.10, the one that machine calls
+`python`). The Ubuntu machine has neither `python3-venv` nor `libgomp1` installed, so none of
+the three commands was run there exactly as printed: the environment was made without pip,
+the packages were installed with a pip supplied by hand, and the run was started with
+LightGBM pointed at an unpacked copy of `libgomp1`. Both environments wrote the same file.
+They were made at earlier commits, and the final commit was run in each of them again. The feature code uses
 only exact arithmetic (no transcendental functions and no linear-algebra library), so the
 models read the same numbers on every machine. What follows them (the trees' own sums, the
 step that turns them into probabilities, and the logarithms the decoder takes of those) gave
