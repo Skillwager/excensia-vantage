@@ -902,10 +902,13 @@ The command prints the SHA-256 of the file it writes and saves a receipt next to
 hashes of the inputs.
 
 The same file, byte for byte, was produced from fresh clones of the repository on Windows 11
-(Python 3.12.13) and on Ubuntu 24.04 (Python 3.12.3). Both of those runs used the pinned
-packages already installed on the machine, so only the last command was run. On Windows the
-three commands were also run in a newly made environment, with `.venv\Scripts` for `.venv/bin`,
-which downloaded the pinned packages; that was done at an earlier commit, and the run was
+(Python 3.12.13) and on Ubuntu 24.04 (Python 3.12.3). On Ubuntu the clone got a
+newly made environment, and `pip install -r requirements.txt` downloaded the pinned packages
+into it. That machine has neither `python3-venv` nor `libgomp1` installed, so the first command
+was not run as printed there: the environment was made without pip, pip was supplied by hand,
+and LightGBM was pointed at an unpacked copy of `libgomp1`. On Windows the fresh clone was run
+with the pinned packages already installed; the three commands as printed, with `.venv\Scripts`
+for `.venv/bin`, were run in a newly made environment at an earlier commit, and the run was
 repeated in that environment at the final one. The feature code uses
 only exact arithmetic (no transcendental functions and no linear-algebra library), so the
 models read the same numbers on every machine. What follows them (the trees' own sums, the

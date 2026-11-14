@@ -54,7 +54,8 @@ trained models are fixed files in `models/`, the features use only exact arithme
 transcendental functions, no linear-algebra library), and a prediction is a sum of constants chosen
 by threshold tests; the decoder then takes a logarithm of the models' probabilities. The same
 file, byte for byte, came out on Windows 11 and on Ubuntu 24.04, each from a fresh clone (the two
-systems ran on the same machine; on Ubuntu the pinned packages were installed beforehand).
+systems ran on the same machine; section 8 of the technical document says exactly what was run
+on each).
 
 The command prints the SHA-256 of the file it wrote and stores it in `Excensia.receipt.json`
 together with the hashes of the inputs, the models and the package versions. The submitted file is
