@@ -30,7 +30,7 @@
    "detail": "SkillCorner, prepared the same way for both",
    "earlier": 0.6339,
    "new": 0.6578,
-   "printed_by": "scripts/skillcorner_compare.py --base sc_earlier_ref --other sc_shipped --base-model runs/models/earlier_ref/vantage.json (see scripts/equal_input_card.py)"
+   "printed_by": "the last of the four commands at the top of scripts/equal_input_card.py, once the three before it have made the two runs (scripts/skillcorner_compare.py --base sc_earlier_ref --other sc_shipped --base-model runs/models/earlier_ref/vantage.json)"
   }
  ]
 }

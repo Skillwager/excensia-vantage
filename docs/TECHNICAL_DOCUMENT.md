@@ -590,9 +590,9 @@ bar of 0.005, and the smallest of the ten gains is 0.016. The picture is the sam
 fold's decoding setting is chosen on the other four folds (+0.033 in all, +0.016 for the first
 step and +0.017 for the second, ten matches of ten each time), and in each of the six conditions taken alone (+0.027 in the harsh
 one to +0.041 in the typical one, nine or ten matches of ten gaining). Chance alone moves the
-ten-match mean by about 0.001, and the mean of the seven DFL matches by up to 0.003: the
-submitted models fitted again with another random seed score 0.683, with three matches gaining
-and six losing (the table of what was tried, below). So
+ten-match mean by 0.001 to 0.003: the submitted models fitted again with another random seed
+score 0.6834 against 0.6848, with three matches gaining and six losing, and two reseeds of the
+earlier models moved their mean by 0.001 and 0.003 (the table of what was tried, below). So
 both steps of the rule are met, and the submitted file comes from the 433-input models trained
 on the present simulator's recordings.
 
@@ -652,8 +652,9 @@ the objection holds. This is what was done about it.
 
 *Figure 2. The two sets of models on four kinds of recording (points 2, 4 and 5). Each leads
 on the recordings of the simulator it was trained with; the seventh condition is the present
-simulator's too. On SkillCorner's real tracking, which no simulator made, the new models lead
-(`scripts/figure_checks.py`).*
+simulator's too. On SkillCorner's real tracking, which no simulator made, the new models lead:
+by 0.024 with both reading recordings prepared the same way, as drawn, and by 0.014 with the
+earlier models reading them as they are (`scripts/figure_checks.py`).*
 
 None of this proves that the new file scores higher on the match. Only the ground truth can.
 The two files agree on 95.8% of the frames.
@@ -694,8 +695,10 @@ of both sets of models with `scripts/average_cv.py`):
 
 The reseeded runs show how far chance alone moves these numbers: 0.001 to 0.003 in the mean,
 with single matches going both ways. The two lines that change the submitted frame classifier
-are inside that on the seven DFL matches and on all ten; the larger trees' +0.004 on Metrica's
-three games is just outside it, with five of the ten matches gaining and five losing. The
+are inside that on all ten matches. On the seven DFL matches the heavier weight on short
+possessions is at its edge (-0.0034, against -0.0031 for the largest reseed), and the larger
+trees' +0.004 on Metrica's three games is just outside it, with five of the ten matches
+gaining and five losing. The
 half-the-matches line was not a candidate. It asks whether
 the method is short of matches, and it is: half the matches cost a hundredth. No other open
 matches with labels of the right kind are known to us.
@@ -703,10 +706,12 @@ matches with labels of the right kind are known to us.
 The last line was tried as a hedge between the two simulators, since each set of models leads
 on the recordings of its own (Figure 2). Averaged with the earlier models, the submitted ones gain 0.017 on the
 first simulator's recordings, on all ten matches, and lose 0.006 on the present one's. On
-SkillCorner's real tracking, which neither simulator made, the average loses 0.006 as well
-(0.652 against 0.658; 4 matches gain and 15 lose). It was dropped: the rule written for it
-beforehand allowed a loss of no more than 0.002 on the present simulator's recordings, about
-what a new seed gives.
+SkillCorner's real tracking, which neither simulator made, the average loses 0.006 as well when
+it is read at the decoding setting chosen for it on Metrica's games (0.652 against 0.658; 4 of
+the 20 matches gain and 15 lose), and 0.001 at the submitted models' setting (9 gain, 10 lose).
+It was dropped: the rule written for it beforehand allowed a loss of no more than 0.002 on the
+present simulator's recordings, a little more than the 0.0013 by which a new seed had moved
+that mean.
 
 **Where it still fails** (`scripts/error_report.py`; the ten held-out matches in the typical condition).
 The points are lost on short possessions. Of the 4,227 true possessions, 1,766 last under three
@@ -931,10 +936,11 @@ packages were installed with a pip supplied by hand, and the run was started wit
 pointed at an unpacked copy of `libgomp1`. The packages were downloaded at an earlier
 commit; the final commit was run in that environment from a fresh clone. On Windows the
 fresh clone was run
-with the pinned packages already installed; the three commands as printed, with `.venv\Scripts`
-for `.venv/bin`, were run in a newly made environment at an earlier commit, and the run was
-repeated at the final one in that environment, which by then held the development packages
-as well. The feature code uses
+with the pinned packages already installed. The three commands were run there in a newly made
+environment once, on 13 November, with `.venv\Scripts` for `.venv/bin` and pip called as
+`python -m pip`. That was at a commit that still held the earlier models, and the run wrote
+the earlier file. The final commit was run in the same environment, which by then held the
+development packages as well, and wrote the submitted file. The feature code uses
 only exact arithmetic (no transcendental functions and no linear-algebra library), so the
 models read the same numbers on every machine. What follows them (the trees' own sums, the
 step that turns them into probabilities, and the logarithms the decoder takes of those) gave
