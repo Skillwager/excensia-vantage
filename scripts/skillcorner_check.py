@@ -49,16 +49,20 @@ def main():
     out_dir = os.path.join(ROOT, "runs", "cv", args.tag)
     os.makedirs(out_dir, exist_ok=True)
     rows = []
+    measured, averaged = [], []      # each half's smoothness as recorded, and the average it was given
     print("{:<11} {:>8} {:>8} {:>10} {:>9} {:>8}   {}".format(
         "match", "spellF1", "macroF1", "live/dead", "team", "trans25", "possessions found/true"))
     for match in (args.matches or SKILLCORNER_MATCHES):
         started = time.time()
         truth, predicted, payload = [], [], {}
         for index, half in enumerate(labelled_halves(match)):
+            measured.append(smoothing.spread(half.ball_xy)[1])
+            window = 1
             if args.smooth:
-                half, _ = smoothing.to_reference(half)
+                half, window = smoothing.to_reference(half)
             elif not args.as_recorded:
-                half, _ = smoothing.for_model(half, card)
+                half, window = smoothing.for_model(half, card)
+            averaged.append(window)
             tagged = external.with_tags(half, np.random.default_rng(
                 seed_for("tags", "eval", match, half.period, "clean")))
             state, boundary = model.predict_half_both(state_model, boundary_model, tagged, names)
@@ -78,6 +82,10 @@ def main():
         print("{:<11} {:>8.3f} {:>8.3f} {:>10.3f} {:>9.3f} {:>8.3f}".format(
             "mean", *(float(np.mean([row[key] for row in rows]))
                       for key in ("spellF1", "macroF1", "alive_dead", "team_acc", "trans25"))))
+    print("smoothness of the {} halves as recorded (vantage/smoothing.py; the reference is at most {}): {:.2f} to "
+          "{:.2f}; moving averages given, frames: {} to {}".format(
+              len(measured), smoothing.REFERENCE, float(np.nanmin(measured)), float(np.nanmax(measured)),
+              int(min(averaged)), int(max(averaged))))
 
 
 if __name__ == "__main__":
