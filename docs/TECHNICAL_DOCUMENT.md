@@ -294,8 +294,9 @@ something.
 A method that is validated on a simulator inherits the simulator's mistakes without a sign. So
 every setting that can be tied to a total anyone can print is tied to one, the totals nothing
 was fitted to are printed beside them, and six batches of cross-validation run on the versions
-above were stopped or set aside. The numbers in section 6 come from the one batch run on the
-last version, under a rule written down before it started.
+above were stopped or set aside. The decision in section 6 rests on the one batch run for it
+on the last version, under a rule written down before it started. A second batch on that
+version tried three variants on top of the chosen models, and none was adopted.
 
 **One reference smoothness.** Smoothing can be added and cannot be taken away, so the models
 are trained at the recording's smoothness and a sharper recording is brought to it first: a
@@ -589,7 +590,8 @@ bar of 0.005, and the smallest of the ten gains is 0.016. The picture is the sam
 fold's decoding setting is chosen on the other four folds (+0.033 in all, +0.016 for the first
 step and +0.017 for the second, ten matches of ten each time), and in each of the six conditions taken alone (+0.027 in the harsh
 one to +0.041 in the typical one, nine or ten matches of ten gaining). Chance alone moves these
-means by 0.001 to 0.003, with single matches going both ways (the two reseeded runs below). So
+means by about 0.001: the submitted models fitted again with another random seed score 0.683,
+with three matches gaining and six losing (the table of what was tried, below). So
 both steps of the rule are met, and the submitted file comes from the 433-input models trained
 on the present simulator's recordings.
 
@@ -661,7 +663,9 @@ setting, on recordings by the simulator as first built:
 | Six simulated recordings of every training half instead of three | Metrica's three games, six conditions (the seven DFL matches: 0.683 to 0.688) | 0.726 | 0.729 |
 
 **What was tried and not adopted.** Each line is the same five folds, paired match by match with
-the method it would have changed, on recordings by the simulator as first built:
+the method it would have changed. The first nine are on recordings by the simulator as first
+built. The last three are on the present simulator's recordings, paired with the submitted
+models (`scripts/specs/after_the_decision.json`):
 
 | Tried | Change in spellF1: Metrica's games, DFL matches, all ten | Matches that gain, that lose |
 |---|---|---|
@@ -674,9 +678,12 @@ the method it would have changed, on recordings by the simulator as first built:
 | SkillCorner's twenty matches added to the training rows (see below) | -0.007, -0.011, -0.010 | 1, 8 |
 | Half of the training matches only | -0.007, -0.011, -0.010 | 1, 9 |
 | Nine simulated recordings of every training half instead of six | +0.001, +0.003, +0.003 | 7, 3 |
+| The submitted models trained with another random seed | +0.002, -0.003, -0.001 | 3, 6 |
+| The submitted frame classifier with more weight on short possessions (up to 6 instead of 4) | +0.000, -0.003, -0.002 | 3, 7 |
+| The submitted frame classifier with larger trees (127 leaves of at least 200 rows) | +0.004, -0.002, -0.000 | 5, 5 |
 
-The two seeds show how far chance alone moves these numbers: a few thousandths in the mean, with
-single matches going both ways. The half-the-matches line was not a candidate. It asks whether
+The reseeded runs show how far chance alone moves these numbers: 0.001 to 0.003 in the mean,
+with single matches going both ways. The last two lines are inside that. The half-the-matches line was not a candidate. It asks whether
 the method is short of matches, and it is: half the matches cost a hundredth. No other open
 matches with labels of the right kind are known to us.
 

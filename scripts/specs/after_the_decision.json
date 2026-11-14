@@ -1,0 +1,6 @@
+[
+  {"tag": "S7all", "state": {}, "boundary": {}},
+  {"tag": "N8w6", "state": {"short_weight": 6.0}, "boundary": "reuse:S7all"},
+  {"tag": "N8big", "state": {"params": {"num_leaves": 127, "min_data_in_leaf": 200}}, "boundary": "reuse:S7all"},
+  {"tag": "N8s1", "state": {"seed": 1}, "boundary": {"seed": 1}}
+]
