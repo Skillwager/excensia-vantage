@@ -673,9 +673,10 @@ setting, on recordings by the simulator as first built:
 
 **What was tried and not adopted.** Each line is the same five folds, paired match by match with
 the method it would have changed. The first nine are on recordings by the simulator as first
-built. The last four are on the present simulator's recordings, paired with the submitted
+built. The last five are on the present simulator's recordings, paired with the submitted
 models (`scripts/specs/after_the_decision.json`; the fourth is made from the stored answers
-of both sets of models with `scripts/average_cv.py`):
+of both sets of models with `scripts/average_cv.py`, and the fifth is fitted on training
+tables that `scripts/third_loss_tables.py` builds):
 
 | Tried | Change in spellF1: Metrica's games, DFL matches, all ten | Matches that gain, that lose |
 |---|---|---|
@@ -692,6 +693,7 @@ of both sets of models with `scripts/average_cv.py`):
 | The submitted frame classifier with more weight on short possessions (up to 6 instead of 4) | +0.000, -0.003, -0.002 | 3, 7 |
 | The submitted frame classifier with larger trees (127 leaves of at least 200 rows) | +0.004, -0.002, -0.000 | 5, 5 |
 | The average of the earlier models' and the submitted models' answers, frame by frame | -0.005, -0.007, -0.006 | 1, 9 |
+| The submitted models trained on recordings drawn with a third of the rate of live losses | +0.000, -0.008, -0.005 | 1, 9 |
 
 The reseeded runs show how far chance alone moves these numbers: 0.001 to 0.003 in the mean,
 with single matches going both ways. The two lines that change the submitted frame classifier
@@ -703,7 +705,7 @@ half-the-matches line was not a candidate. It asks whether
 the method is short of matches, and it is: half the matches cost a hundredth. No other open
 matches with labels of the right kind are known to us.
 
-The last line was tried as a hedge between the two simulators, since each set of models leads
+The line before the last was tried as a hedge between the two simulators, since each set of models leads
 on the recordings of its own (Figure 2). Averaged with the earlier models, the submitted ones gain 0.017 on the
 first simulator's recordings, on all ten matches, and lose 0.006 on the present one's. On
 SkillCorner's real tracking, which neither simulator made, the average loses 0.006 as well when
@@ -712,6 +714,37 @@ the 20 matches gain and 15 lose), and 0.001 at the submitted models' setting (9 
 It was dropped: the rule written for it beforehand allowed a loss of no more than 0.002 on the
 present simulator's recordings, a little more than the 0.0013 by which a new seed had moved
 that mean.
+
+The last line asks a question that point 5 leaves open: were the models trained on recordings
+that lose the ball too often? The simulated recordings they learned from have no tracked ball
+on 21% of their live frames in the median, and SkillCorner's real tracking on 7%. The rate at
+which the simulator draws losses of the ball in live play was divided by three, a number fixed
+before any model was fitted, which brings that median to 10% (`scripts/third_loss_tables.py
+--report g7 g8`), and the submitted models' recipe was fitted again on those recordings
+(`scripts/specs/third_loss.json`). The change in spellF1 from the submitted models to the new
+fit; the first line adds the matches that gain and that lose (`scripts/third_loss_tables.py`
+lists the commands):
+
+| Both fits decoded | Six conditions | Seventh condition | SkillCorner's twenty matches |
+|---|---|---|---|
+| each at its own setting, as in the table above | -0.0055 (1, 9) | +0.0017 (7, 3) | +0.0058 (15, 5) |
+| at the submitted models' setting | -0.0037 | +0.0039 | -0.0019 |
+| at the new fit's setting | -0.0015 | +0.0046 | -0.0009 |
+
+The two settings differ in one number, the boundary model's bias: -0.5 for the submitted
+models, 0 for the new fit. On SkillCorner's matches the new fit leads only when it alone has
+its setting: that lead is the setting's, not the training's. SkillCorner's labels hold fewer
+short possessions (see below), and the setting without a bias writes fewer possessions for
+either fit. Given to the submitted models it is worth 0.007 there and costs 0.004 on the six
+conditions, so the setting chosen on Metrica's games stays. On the seventh condition, the one
+in the regime the recording seems to be in, the new fit leads on every reading, by 0.002 to
+0.005; it trails most where the ball is lost most often (0.653 to 0.641 in the harsh
+condition, each fit at its own setting). The rule written before any result read each fit at
+its own setting and asked for a gain of 0.005 on the seventh condition with eight matches of
+ten gaining, the same on SkillCorner's matches with sixteen of twenty, and a loss of no more
+than 0.005 on the six conditions. All three were missed: the first clearly, the second by one
+match of twenty (its mean cleared the bar), the third narrowly (0.00545). With one setting for
+both, the first two are missed on their means. The submitted models stayed.
 
 **Where it still fails** (`scripts/error_report.py`; the ten held-out matches in the typical condition).
 The points are lost on short possessions. Of the 4,227 true possessions, 1,766 last under three
@@ -759,7 +792,10 @@ Against the earlier models reading the recordings as they are, 16 of the 20 matc
 new ones (the gaps the reference tracker never reports bridged, the path brought to the
 reference smoothness; `scripts/equal_input_card.py`), 19 gain and one loses. The second
 comparison is the nearer to the match, where both sets of models read the same file and its
-ball path is already that smooth. The method writes 1.35 times as many possessions as these labels hold, and of
+ball path is already that smooth. In both comparisons each set of models is decoded at its own
+setting; with one setting for both, the submitted models' or the earlier ones', the leads are
+0.0129 or 0.0134 and 0.0255 or 0.0230, against 0.0144 and 0.0239
+(`scripts/skillcorner_compare.py`). The method writes 1.35 times as many possessions as these labels hold, and of
 those it writes under three seconds only 28% match one. Part of the distance in spellF1 from the simulated recordings is a
 difference in what the labels are, not in how well they are found. In these files a possession
 is recorded only when a player has the ball under control, so 21% of the possessions are under
@@ -862,7 +898,12 @@ spellF1 there by about six points.
     across a range instead of right for this recording. None of the six test conditions has
     the regime the submitted file itself reads off the recording, a ball untracked on 79% of
     the dead-ball frames and 9% of the live ones; the seventh, made afterwards, has 79% and
-    12% (section 6).
+    12% (section 6). Models trained for the low end of that range, drawn with a third of the
+    rate of live losses, were the last thing tried (section 6): they lead by 0.002 to 0.005
+    on the seventh condition, are 0.001 to 0.002 behind on SkillCorner's real tracking at one
+    decoding setting for both, and trail by 0.004 to 0.012 in the harsh condition. No lead met
+    the rule set for it; if this tracker loses the ball in live play as rarely as the seventh
+    condition does, the submitted models may be giving away those 0.002 to 0.005.
 - The margin of the new models over the earlier ones in section 6 is of the size that each of
   the five simulator versions that got as far as a batch gave its own models (0.023 to 0.036
   on four matches), flawed versions included, so by itself it shows little. What speaks for the new models beyond it is in the

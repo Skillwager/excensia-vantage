@@ -3,8 +3,9 @@
 A Markdown file uploaded on its own shows no figure and no table. This script turns
 docs/TECHNICAL_DOCUMENT.md into a page that carries its figures inside it, and prints that page
 to a PDF with a Chromium browser (Chrome or Edge) if one is installed. It reads the kinds of
-Markdown the document uses and no others: headings, paragraphs, lists, tables, fenced code,
-images, and bold, italic, code and links inside a line. No package is needed.
+Markdown the document uses and no others: headings, paragraphs, lists (and a list inside an
+entry of another, one level deep), tables, fenced code, images, and bold, italic, code and
+links inside a line. No package is needed.
 
     python scripts/document_pdf.py                       # docs/TECHNICAL_DOCUMENT.html and .pdf
     python scripts/document_pdf.py --out submission/Excensia
@@ -23,7 +24,7 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCE = os.path.join(HERE, "docs", "TECHNICAL_DOCUMENT.md")
 
 STYLE = """
-@page { size: A4; margin: 17mm 16mm 18mm 16mm; }
+@page { size: A4; margin: 17mm 16mm 15mm 16mm; }
 html { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: 10.2pt; line-height: 1.42;
        color: #111; }
 body { margin: 0 auto; max-width: 178mm; }
@@ -33,6 +34,7 @@ h3 { font-size: 11pt; margin: 12pt 0 4pt; break-after: avoid; }
 p { margin: 0 0 7pt; }
 ul, ol { margin: 0 0 7pt; padding-left: 16pt; }
 li { margin: 0 0 3pt; }
+li > ul, li > ol { margin: 3pt 0 0; }
 code { font-family: Consolas, "DejaVu Sans Mono", monospace; font-size: 9pt; }
 pre { background: #f4f4f1; padding: 6pt 8pt; border-radius: 3pt; overflow-wrap: anywhere; white-space: pre-wrap;
       font-size: 8.6pt; line-height: 1.35; margin: 0 0 8pt; }
@@ -41,6 +43,7 @@ table { border-collapse: collapse; width: 100%; margin: 2pt 0 9pt; font-size: 8.
 th, td { border-bottom: 0.5pt solid #c9c8c0; padding: 3pt 5pt 3pt 0; text-align: left; vertical-align: top; }
 th { border-bottom: 0.9pt solid #555; font-weight: 600; }
 tr { break-inside: avoid; }
+tr.heads { break-after: avoid; }
 img { max-width: 100%; display: block; margin: 4pt 0 3pt; }
 a { color: #1b4f9c; text-decoration: none; overflow-wrap: anywhere; }
 """
@@ -106,7 +109,10 @@ def convert(text, folder):
             table = ["<table><thead><tr>{}</tr></thead><tbody>".format(
                 "".join("<th>{}</th>".format(inline(cell)) for cell in head))]
             for row in rows:
-                table.append("<tr>{}</tr>".format("".join("<td>{}</td>".format(inline(cell)) for cell in row)))
+                # a row that only heads the rows under it stays on their page
+                heads = row[0].startswith("**") and row[0].endswith("**") and not any(row[1:])
+                table.append("<tr{}>{}</tr>".format(' class="heads"' if heads else "", "".join(
+                    "<td>{}</td>".format(inline(cell)) for cell in row)))
             out.append("".join(table) + "</tbody></table>")
         elif re.match(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$", line):
             match = re.match(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$", line)
@@ -117,11 +123,21 @@ def convert(text, folder):
             entries = []
             while i < len(lines) and item.match(lines[i]) and not lines[i].startswith(" "):
                 words = [item.match(lines[i]).group(3)]
+                inner, inner_ordered = [], False       # a list inside this entry, one level deep
                 i += 1
                 while i < len(lines) and lines[i].strip() and lines[i].startswith(" "):
-                    words.append(lines[i].strip())
+                    nested = item.match(lines[i])
+                    if nested:
+                        inner_ordered = nested.group(2) != "-" if not inner else inner_ordered
+                        inner.append([nested.group(3)])
+                    else:
+                        (inner[-1] if inner else words).append(lines[i].strip())
                     i += 1
-                entries.append("<li>{}</li>".format(inline(" ".join(words))))
+                inside = ""
+                if inner:
+                    inside = "<{0}>{1}</{0}>".format("ol" if inner_ordered else "ul", "".join(
+                        "<li>{}</li>".format(inline(" ".join(part))) for part in inner))
+                entries.append("<li>{}{}</li>".format(inline(" ".join(words)), inside))
             out.append("<{0}>{1}</{0}>".format("ol" if ordered else "ul", "".join(entries)))
         else:
             words = []
