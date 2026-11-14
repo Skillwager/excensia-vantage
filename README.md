@@ -45,14 +45,16 @@ python -m venv .venv
 Run the last line from this folder. Python 3.12 (`.python-version` has the exact one used). The
 pinned packages in `requirements.txt` are the whole runtime: numpy, scipy, lightgbm and
 lightgbm's one dependency. On Linux, LightGBM also needs the OpenMP runtime, which a minimal
-image may lack (`apt-get install libgomp1`), and on Debian and Ubuntu `python -m venv` needs the
-`python3-venv` package; on macOS, `brew install libomp`.
+image may lack (`apt-get install libgomp1`); on Debian and Ubuntu the interpreter is called
+`python3`, and `python3 -m venv` needs the `python3-venv` package; on macOS, `brew install libomp`.
 
 The run takes under a minute on an eight-core desktop, uses no GPU and no network, and is
 deterministic. The
 trained models are fixed files in `models/`, the features use only exact arithmetic (no
 transcendental functions, no linear-algebra library), and a prediction is a sum of constants chosen
-by threshold tests. The same file, byte for byte, came out on Windows 11 and on Ubuntu 24.04.
+by threshold tests; the decoder then takes a logarithm of the models' probabilities. The same
+file, byte for byte, came out on Windows 11 and on Ubuntu 24.04, each from a fresh clone (the two
+systems ran on the same machine; on Ubuntu the pinned packages were installed beforehand).
 
 The command prints the SHA-256 of the file it wrote and stores it in `Excensia.receipt.json`
 together with the hashes of the inputs, the models and the package versions. The submitted file is
@@ -162,7 +164,7 @@ The other scripts are the checks behind statements in the technical document:
 | `restart_check.py`, `file_compare.py` | A finished file against the tracking and the tags, without labels or video: where it restarts play relative to the tag and to the frame the ball is picked up, what it calls the gaps in the ball's track, and where two files differ. Totals only. |
 | `loss_report.py`, `stop_profile.py`, `shape_report.py` | Three more of the same kind: what the ball is doing just before the tracker loses it for five seconds or more; what the ball does at the moment play stops, in the open matches as published, as simulated, and in SkillCorner's recorded tracking; how many players are missing together and how deep each team's last player stands. Totals only. |
 | `figure_kick.py`, `document_pdf.py` | Figure 1 of the technical document from its numbers (`docs/figures/kick_profile.json` holds 41 whole-match averages and no match data), and the document as one HTML page and a PDF. |
-| `cv_variants.py`, `specs/`, `compare_cv.py`, `condition_compare.py` | One cross-validation fold with several variants of the method on the same held-out recordings, and two runs set side by side match by match: the paired comparisons of section 6. `condition_compare.py` reads the same models under one more scoring condition, each at the decoding setting it already had. |
+| `cv_variants.py`, `specs/`, `compare_cv.py`, `condition_compare.py`, `regime_report.py` | One cross-validation fold with several variants of the method on the same held-out recordings, and two runs set side by side match by match: the paired comparisons of section 6. `condition_compare.py` reads the same models under one more scoring condition, each at the decoding setting it already had, and `regime_report.py` prints how much of the dead-ball time and of the live time has no tracked ball in each condition. |
 | `error_budget.py` | What each kind of error costs on held-out external matches, by repairing one kind at a time with the truth. |
 | `stoppage_check.py` | Where the ball is untracked through the match and how much of that a file calls dead ball (no labels), and, on the public five minutes, whether dead ball is found with and without a tracked ball. |
 | `tag_check.py`, `set_piece_profile.py` | Label-free totals of Smart Tagging: which tags are fixed-length clips, where tags sit relative to the tracked ball, and where in a set-piece clip the restart falls. |
@@ -173,7 +175,7 @@ The other scripts are the checks behind statements in the technical document:
 | `public_truth_run.py` | The organisers' public five minutes as a run file for the viewer: their labels and the provided tracking, nothing from the model. Totals only are printed. |
 | `adversarial.py` | Whether a classifier fitted on one half can tell the provided tracking from simulated tracking on the other half, by family of features, against the same question asked of an open match. |
 | `fetch_skillcorner.py`, `skillcorner_check.py`, `skillcorner_compare.py`, `headline_cv.py`, `equal_input_card.py` | SkillCorner's open A-League matches (1.9 GB, MIT licence): download with checksums, the shipped models run on them unchanged, and the parts of the score for any saved set of predictions. `equal_input_card.py` writes a copy of an earlier model card that asks for the same preparation of a recording as the shipped one, so that two sets of models can be compared on equally prepared recordings (the earlier models are at the tag `earlier-models`). |
-| `skillcorner_look.py`, `skillcorner_labels.py`, `skillcorner_flag.py`, `skillcorner_dead.py` | How that source's files agree with each other, what its labels look like, and when its stoppages begin and end. |
+| `skillcorner_look.py`, `skillcorner_labels.py`, `skillcorner_flag.py`, `skillcorner_dead.py`, `skillcorner_cover.py` | How that source's files agree with each other, what its labels look like, when its stoppages begin and end, and how much of its dead-ball time and live time has no tracking. |
 | `broadcast_align.py`, `broadcast_try.py` | The broadcast tracking placed on the tactical frames, and how many labels its ball would change. Totals only; nothing is written into the submission. |
 | `average_cv.py`, `stack_cv.py` | Two things tried on the finished method and not adopted: averaging seeds, and a second model on the first one's held-out predictions. |
 

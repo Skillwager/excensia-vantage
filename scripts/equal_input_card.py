@@ -3,7 +3,9 @@
     python scripts/equal_input_card.py --card /path/to/earlier/models/vantage.json \
         --like models/vantage.json --out runs/models/earlier_ref
     python scripts/skillcorner_check.py --model runs/models/earlier_ref/vantage.json --tag sc_earlier_ref
-    python scripts/skillcorner_compare.py --base sc_earlier_ref --other sc_shipped
+    python scripts/skillcorner_check.py                      # the shipped models, into sc_shipped
+    python scripts/skillcorner_compare.py --base sc_earlier_ref --other sc_shipped \
+        --base-model runs/models/earlier_ref/vantage.json
 
 The models of the first simulator read a recording as it is; the present ones first bridge the
 gaps the reference tracker never reports and bring the ball's path to the reference smoothness
@@ -11,7 +13,9 @@ gaps the reference tracker never reports and bring the ball's path to the refere
 recordings prepared the same way, which is how the provided recording comes (it is already that
 smooth and has no such gap), this writes a copy of the first card with the second card's
 "smoothing" entry. The model files are copied unchanged, and their hashes stay in the card.
-The earlier models are in this repository's history (tag `earlier-models`). Open data only.
+The earlier models are in this repository's history (tag `earlier-models`; `git worktree add
+../earlier earlier-models` puts them beside this folder). Only the ball's path is prepared;
+the players' paths stay as recorded. Open data only.
 """
 
 import argparse

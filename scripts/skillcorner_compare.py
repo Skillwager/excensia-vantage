@@ -1,9 +1,13 @@
 """Two sets of saved predictions on SkillCorner's matches, side by side, match by match.
 
     python scripts/skillcorner_compare.py --base sc_shipped --other sc_try [--decode '<json>'] [--other-decode '<json>']
+    python scripts/skillcorner_compare.py --base sc_earlier_ref --other sc_shipped \
+        --base-model runs/models/earlier_ref/vantage.json
 
-Each is decoded with the settings given (default: the shipped model card's) and scored with the
-official metric code against SkillCorner's own labels. External matches only.
+Each is decoded with the settings given, or with those of the model card named for it (default:
+the shipped model card's), and scored with the official metric code against SkillCorner's own
+labels. Answers that come from other models than the shipped ones need their own card or
+setting. External matches only.
 """
 import argparse
 import json
@@ -39,12 +43,24 @@ def main():
     parser.add_argument("--other", required=True)
     parser.add_argument("--decode", default=None)
     parser.add_argument("--other-decode", default=None)
+    parser.add_argument("--base-model", default=None,
+                        help="model card whose decoding setting the base run is read at")
+    parser.add_argument("--other-model", default=None, help="the same for the other run")
     args = parser.parse_args()
-    with open(os.path.join(ROOT, "models", "vantage.json")) as handle:
-        card = json.load(handle)["decode"]
-    base_config = decoding.DecodeConfig(**(json.loads(args.decode) if args.decode else card))
-    other_config = decoding.DecodeConfig(**(json.loads(args.other_decode) if args.other_decode
-                                            else (json.loads(args.decode) if args.decode else card)))
+
+    def of_card(path):
+        with open(path or os.path.join(ROOT, "models", "vantage.json")) as handle:
+            return json.load(handle)["decode"]
+
+    base_setting = json.loads(args.decode) if args.decode else of_card(args.base_model)
+    if args.other_decode:
+        other_setting = json.loads(args.other_decode)
+    elif args.other_model or not args.decode:
+        other_setting = of_card(args.other_model)
+    else:
+        other_setting = json.loads(args.decode)
+    base_config = decoding.DecodeConfig(**base_setting)
+    other_config = decoding.DecodeConfig(**other_setting)
     base, other = scores(args.base, base_config), scores(args.other, other_config)
     matches = [m for m in SKILLCORNER_MATCHES if m in base and m in other]
     print("{:<11} {:>9} {:>9} {:>8}   {:>9} {:>9}   {:>9} {:>9}".format(
