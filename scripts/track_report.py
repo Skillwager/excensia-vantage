@@ -225,7 +225,8 @@ def read(title, pairs):
     longer = gaps[seconds >= 5]
     tagged, other = longer[longer[:, 5] > 0], longer[longer[:, 5] == 0]
     tag_after = np.array(tag_after, dtype=np.float64)
-    print("   {} tagged restarts: ball tracked right through {:.0%}; otherwise the nearest beginning of a track is, in "
+    print("   {} tagged restarts: a tracked ball on every frame of the two seconds either side of the tag's restart "
+          "at {:.0%}; otherwise the nearest beginning of a track within ten seconds is, in "
           "frames after the tag's restart, p10/25/50/75/90 {}, within a second at {}".format(
               tags, tag_through / max(tags, 1), q(tag_after, (10, 25, 50, 75, 90), "{:.0f}"),
               pc(np.abs(tag_after) <= FPS)))
@@ -294,7 +295,8 @@ def set_pieces(data_dir, halves):
 
 def say_kind(kind, row):
     touch, goal, corner = np.array(row["touch"]), np.array(row["goal"]), np.array(row["corner"])
-    print("   {}: {} tags, tracked right through {}; at the other {} the track begins {} frames after the tag's "
+    print("   {}: {} tags, a tracked ball on every frame of the two seconds either side at {}; at {} of the others a "
+          "track begins within ten seconds, {} frames after the tag's "
           "restart (p25/50/75), {} m inside the nearest touchline (less than 2 m inside it, or beyond it: {}), {} m "
           "inside the nearest goal line (less than 2 m inside it, or beyond it: {}), within 3 m of a corner {}; the ball "
           "at {} m/s, moving in from the nearest line at {} m/s; nearest player {} m".format(
