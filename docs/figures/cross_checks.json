@@ -1,0 +1,36 @@
+{
+ "what": "mean spellF1 of the earlier models (trained on recordings from the simulator as first built, 255 inputs) and of the new models (trained on the present simulator's recordings, 433 inputs) on four kinds of recording; open matches only",
+ "rows": [
+  {
+   "name": "The first simulator’s recordings",
+   "detail": "where the earlier models were validated",
+   "earlier": 0.7005,
+   "new": 0.6800,
+   "printed_by": "scripts/compare_cv.py --base G1x_g1 --other S7all_g1",
+   "runs": {"earlier": "G1x_g1", "new": "S7all_g1"}
+  },
+  {
+   "name": "The present simulator’s recordings",
+   "detail": "where the new models were validated",
+   "earlier": 0.6516,
+   "new": 0.6848,
+   "printed_by": "scripts/compare_cv.py --base G1x_g7 --other S7all_g7",
+   "runs": {"earlier": "G1x_g7", "new": "S7all_g7"}
+  },
+  {
+   "name": "A seventh condition, made afterwards",
+   "detail": "the ball untracked about as often as in the recording",
+   "earlier": 0.6476,
+   "new": 0.6875,
+   "printed_by": "scripts/condition_compare.py --pairs G1x_g7:G1xM_g7 S7all_g7:S7allM_g7",
+   "runs": {"earlier": "G1xM_g7", "earlier_setting_from": "G1x_g7", "new": "S7allM_g7", "new_setting_from": "S7all_g7"}
+  },
+  {
+   "name": "Another provider’s real tracking",
+   "detail": "SkillCorner, prepared the same way for both",
+   "earlier": 0.6339,
+   "new": 0.6578,
+   "printed_by": "scripts/skillcorner_compare.py --base sc_earlier_ref --other sc_shipped --base-model runs/models/earlier_ref/vantage.json (see scripts/equal_input_card.py)"
+  }
+ ]
+}

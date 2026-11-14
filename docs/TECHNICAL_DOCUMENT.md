@@ -589,9 +589,10 @@ added inputs are worth another 0.018 (the smallest is 0.003). Together that is 0
 bar of 0.005, and the smallest of the ten gains is 0.016. The picture is the same when each
 fold's decoding setting is chosen on the other four folds (+0.033 in all, +0.016 for the first
 step and +0.017 for the second, ten matches of ten each time), and in each of the six conditions taken alone (+0.027 in the harsh
-one to +0.041 in the typical one, nine or ten matches of ten gaining). Chance alone moves these
-means by about 0.001: the submitted models fitted again with another random seed score 0.683,
-with three matches gaining and six losing (the table of what was tried, below). So
+one to +0.041 in the typical one, nine or ten matches of ten gaining). Chance alone moves the
+ten-match mean by about 0.001, and the mean of the seven DFL matches by up to 0.003: the
+submitted models fitted again with another random seed score 0.683, with three matches gaining
+and six losing (the table of what was tried, below). So
 both steps of the rule are met, and the submitted file comes from the 433-input models trained
 on the present simulator's recordings.
 
@@ -647,6 +648,13 @@ the objection holds. This is what was done about it.
    with moderate to good confidence. Point 1 is its finding. The objections it left standing
    are in section 7 and beside the table of the file's totals below.
 
+![Figure 2. Mean spellF1 of the earlier models and of the new ones on four kinds of recording: the first simulator's, the present simulator's, a seventh condition made afterwards, and SkillCorner's real tracking.](figures/cross_checks.png)
+
+*Figure 2. The two sets of models on four kinds of recording (points 2, 4 and 5). Each leads
+on the recordings of the simulator it was trained with; the seventh condition is the present
+simulator's too. On SkillCorner's real tracking, which no simulator made, the new models lead
+(`scripts/figure_checks.py`).*
+
 None of this proves that the new file scores higher on the match. Only the ground truth can.
 The two files agree on 95.8% of the frames.
 
@@ -664,8 +672,9 @@ setting, on recordings by the simulator as first built:
 
 **What was tried and not adopted.** Each line is the same five folds, paired match by match with
 the method it would have changed. The first nine are on recordings by the simulator as first
-built. The last three are on the present simulator's recordings, paired with the submitted
-models (`scripts/specs/after_the_decision.json`):
+built. The last four are on the present simulator's recordings, paired with the submitted
+models (`scripts/specs/after_the_decision.json`; the fourth is made from the stored answers
+of both sets of models with `scripts/average_cv.py`):
 
 | Tried | Change in spellF1: Metrica's games, DFL matches, all ten | Matches that gain, that lose |
 |---|---|---|
@@ -681,11 +690,23 @@ models (`scripts/specs/after_the_decision.json`):
 | The submitted models trained with another random seed | +0.002, -0.003, -0.001 | 3, 6 |
 | The submitted frame classifier with more weight on short possessions (up to 6 instead of 4) | +0.000, -0.003, -0.002 | 3, 7 |
 | The submitted frame classifier with larger trees (127 leaves of at least 200 rows) | +0.004, -0.002, -0.000 | 5, 5 |
+| The average of the earlier models' and the submitted models' answers, frame by frame | -0.005, -0.007, -0.006 | 1, 9 |
 
 The reseeded runs show how far chance alone moves these numbers: 0.001 to 0.003 in the mean,
-with single matches going both ways. The last two lines are inside that. The half-the-matches line was not a candidate. It asks whether
+with single matches going both ways. The two lines that change the submitted frame classifier
+are inside that on the seven DFL matches and on all ten; the larger trees' +0.004 on Metrica's
+three games is just outside it, with five of the ten matches gaining and five losing. The
+half-the-matches line was not a candidate. It asks whether
 the method is short of matches, and it is: half the matches cost a hundredth. No other open
 matches with labels of the right kind are known to us.
+
+The last line was tried as a hedge between the two simulators, since each set of models leads
+on the recordings of its own (Figure 2). Averaged with the earlier models, the submitted ones gain 0.017 on the
+first simulator's recordings, on all ten matches, and lose 0.006 on the present one's. On
+SkillCorner's real tracking, which neither simulator made, the average loses 0.006 as well
+(0.652 against 0.658; 4 matches gain and 15 lose). It was dropped: the rule written for it
+beforehand allowed a loss of no more than 0.002 on the present simulator's recordings, about
+what a new seed gives.
 
 **Where it still fails** (`scripts/error_report.py`; the ten held-out matches in the typical condition).
 The points are lost on short possessions. Of the 4,227 true possessions, 1,766 last under three
@@ -893,8 +914,8 @@ python -m venv .venv
 .venv/bin/python -m vantage run --data-dir /path/to/data --out Excensia.csv
 ```
 
-Run from the repository's folder. Python 3.12; numpy, scipy and lightgbm at the versions pinned
-in `requirements.txt`. On Windows the two programs are in `.venv\Scripts`. On Debian and
+Run from the repository's folder. Python 3.12; the four packages pinned in `requirements.txt`
+(numpy, scipy, lightgbm and narwhals, which LightGBM requires). On Windows the two programs are in `.venv\Scripts`. On Debian and
 Ubuntu the interpreter is called `python3`, and `python3 -m venv` needs the `python3-venv`
 package. On Linux, LightGBM needs the OpenMP runtime (`apt-get install libgomp1`). The run takes under a minute on an eight-core desktop, with no GPU and no network. The trained models are in `models/`
 with their SHA-256 in `models/vantage.json`; the run refuses a model file that does not match.
@@ -904,12 +925,16 @@ hashes of the inputs.
 The same file, byte for byte, was produced from fresh clones of the repository on Windows 11
 (Python 3.12.13) and on Ubuntu 24.04 (Python 3.12.3). On Ubuntu the clone got a
 newly made environment, and `pip install -r requirements.txt` downloaded the pinned packages
-into it. That machine has neither `python3-venv` nor `libgomp1` installed, so the first command
-was not run as printed there: the environment was made without pip, pip was supplied by hand,
-and LightGBM was pointed at an unpacked copy of `libgomp1`. On Windows the fresh clone was run
+into it. That machine has neither `python3-venv` nor `libgomp1` installed, so none of the
+three commands was run there exactly as printed: the environment was made without pip, the
+packages were installed with a pip supplied by hand, and the run was started with LightGBM
+pointed at an unpacked copy of `libgomp1`. The packages were downloaded at an earlier
+commit; the final commit was run in that environment from a fresh clone. On Windows the
+fresh clone was run
 with the pinned packages already installed; the three commands as printed, with `.venv\Scripts`
 for `.venv/bin`, were run in a newly made environment at an earlier commit, and the run was
-repeated in that environment at the final one. The feature code uses
+repeated at the final one in that environment, which by then held the development packages
+as well. The feature code uses
 only exact arithmetic (no transcendental functions and no linear-algebra library), so the
 models read the same numbers on every machine. What follows them (the trees' own sums, the
 step that turns them into probabilities, and the logarithms the decoder takes of those) gave

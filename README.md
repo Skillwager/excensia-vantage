@@ -42,7 +42,8 @@ python -m venv .venv
 .venv/bin/python -m vantage run --data-dir /path/to/data --out Excensia.csv
 ```
 
-Run the last line from this folder. Python 3.12 (`.python-version` has the exact one used). The
+Run the last line from this folder. Python 3.12 (`.python-version` has the one used on Windows; the Ubuntu runs used that
+system's own 3.12.3). The
 pinned packages in `requirements.txt` are the whole runtime: numpy, scipy, lightgbm and
 lightgbm's one dependency. On Linux, LightGBM also needs the OpenMP runtime, which a minimal
 image may lack (`apt-get install libgomp1`); on Debian and Ubuntu the interpreter is called
@@ -164,7 +165,7 @@ The other scripts are the checks behind statements in the technical document:
 | `smoothing_report.py`, `edge_report.py`, `track_report.py`, `corner_check.py` | More of the same, and what section 2 of the technical document rests on: how much the tracker smooths its paths, how its tracks begin and end, which gaps it reports and which it bridges, where and when it loses and finds the ball (by kind of set piece too), how the players move through a gap, and whether the ball's path carried into a touch from both sides meets at a player's feet. `track_report.py --labels` adds the yardsticks from the open matches' own labels. Totals only. |
 | `restart_check.py`, `file_compare.py` | A finished file against the tracking and the tags, without labels or video: where it restarts play relative to the tag and to the frame the ball is picked up, what it calls the gaps in the ball's track, and where two files differ. Totals only. |
 | `loss_report.py`, `stop_profile.py`, `shape_report.py` | Three more of the same kind: what the ball is doing just before the tracker loses it for five seconds or more; what the ball does at the moment play stops, in the open matches as published, as simulated, and in SkillCorner's recorded tracking; how many players are missing together and how deep each team's last player stands. Totals only. |
-| `figure_kick.py`, `document_pdf.py` | Figure 1 of the technical document from its numbers (`docs/figures/kick_profile.json` holds 41 whole-match averages and no match data), and the document as one HTML page and a PDF. |
+| `figure_kick.py`, `figure_checks.py`, `document_pdf.py` | Figures 1 and 2 of the technical document from their numbers (`docs/figures/kick_profile.json` holds 41 whole-match averages and no match data; `docs/figures/cross_checks.json` holds eight means over open matches, each with the command that prints it), and the document as one HTML page and a PDF. |
 | `cv_variants.py`, `specs/`, `compare_cv.py`, `condition_compare.py`, `regime_report.py` | One cross-validation fold with several variants of the method on the same held-out recordings, and two runs set side by side match by match: the paired comparisons of section 6. `condition_compare.py` reads the same models under one more scoring condition, each at the decoding setting it already had, and `regime_report.py` prints how much of the dead-ball time and of the live time has no tracked ball in each condition. |
 | `error_budget.py` | What each kind of error costs on held-out external matches, by repairing one kind at a time with the truth. |
 | `stoppage_check.py` | Where the ball is untracked through the match and how much of that a file calls dead ball (no labels), and, on the public five minutes, whether dead ball is found with and without a tracked ball. |
@@ -178,7 +179,7 @@ The other scripts are the checks behind statements in the technical document:
 | `fetch_skillcorner.py`, `skillcorner_check.py`, `skillcorner_compare.py`, `headline_cv.py`, `equal_input_card.py` | SkillCorner's open A-League matches (1.9 GB, MIT licence): download with checksums, the shipped models run on them unchanged, and the parts of the score for any saved set of predictions. `equal_input_card.py` writes a copy of an earlier model card that asks for the same preparation of a recording as the shipped one, so that two sets of models can be compared on equally prepared recordings (the earlier models are at the tag `earlier-models`). |
 | `skillcorner_look.py`, `skillcorner_labels.py`, `skillcorner_flag.py`, `skillcorner_dead.py`, `skillcorner_cover.py` | How that source's files agree with each other, what its labels look like, when its stoppages begin and end, and how much of its dead-ball time and live time has no tracking. |
 | `broadcast_align.py`, `broadcast_try.py` | The broadcast tracking placed on the tactical frames, and how many labels its ball would change. Totals only; nothing is written into the submission. |
-| `average_cv.py`, `stack_cv.py` | Two things tried on the finished method and not adopted: averaging seeds, and a second model on the first one's held-out predictions. |
+| `average_cv.py`, `stack_cv.py` | Things tried on the finished method and not adopted: averaging the answers of several sets of models (the same models with other seeds, and the earlier models with the submitted ones), and a second model on the first one's held-out predictions. |
 
 ## Tests
 

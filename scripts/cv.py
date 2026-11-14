@@ -191,6 +191,20 @@ def fold(args):
                    "results": results}, handle)
 
 
+def recorded_with(tag):
+    """The simulator generation a run's held-out matches were recorded with, where the run says
+    so: a fold's summary does, and a rescored or averaged run passes on what its source said.
+    None where nothing says or the parts disagree (compare_cv.py reads that as the first)."""
+    folder = os.path.join(ROOT, "runs", "cv", tag)
+    said = set()
+    for path in (glob.glob(os.path.join(folder, "summary_*.json"))
+                 + glob.glob(os.path.join(folder, "averaged.json"))):
+        with open(path) as handle:
+            said.add(json.load(handle).get("generation"))
+    said.discard(None)
+    return said.pop() if len(said) == 1 else None
+
+
 def rescore(args):
     """Score the saved predictions of a run again, with the decoding grid as it is now.
 
@@ -200,6 +214,7 @@ def rescore(args):
     source_dir = os.path.join(ROOT, "runs", "cv", args.tag)
     out_dir = os.path.join(ROOT, "runs", "cv", args.out_tag)
     os.makedirs(out_dir, exist_ok=True)
+    generation = recorded_with(args.tag)
     found = sorted(glob.glob(os.path.join(source_dir, "prob_*.npz")))
     matches = sorted({os.path.basename(path)[5:-4].rsplit("_", 1)[0] for path in found})
     for match in matches:
@@ -228,11 +243,14 @@ def rescore(args):
                 condition, match, scores[best]["spellF1"], scores[best]["macroF1"],
                 scores[best]["n_pred"], scores[best]["n_true"]), flush=True)
         if results:
+            record = {"test": [match], "rescored_from": args.tag,
+                      "grid": [{field: getattr(config, field) for field in GRID_FIELDS}
+                               for config in grid],
+                      "results": results}
+            if generation:
+                record["generation"] = generation
             with open(os.path.join(out_dir, "summary_{}.json".format(match)), "w") as handle:
-                json.dump({"test": [match], "rescored_from": args.tag,
-                           "grid": [{field: getattr(config, field) for field in GRID_FIELDS}
-                                    for config in grid],
-                           "results": results}, handle)
+                json.dump(record, handle)
 
 
 def summary(args):
